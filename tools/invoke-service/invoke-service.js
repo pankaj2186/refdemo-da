@@ -31,7 +31,8 @@ function buildPlaceholdersUrl(org, repo) {
   return `https://main--${repo}--${org}.aem.live/config/placeholder.json`;
 }
 
-async function fetchPlaceholders(org, repo) {
+// Shared key/value reader for /config/placeholder.json
+async function fetchPlaceholderLookup(org, repo) {
   const url = buildPlaceholdersUrl(org, repo);
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Placeholders fetch failed: ${resp.status}`);
@@ -41,6 +42,11 @@ async function fetchPlaceholders(org, repo) {
   (json.data || []).forEach((row) => {
     if (row.key) lookup[row.key.toLowerCase()] = row.value || '';
   });
+  return lookup;
+}
+
+async function fetchPlaceholders(org, repo) {
+  const lookup = await fetchPlaceholderLookup(org, repo);
 
   let rawPayload = lookup['external-service-payload'] || '';
   if (rawPayload.startsWith("'") && rawPayload.endsWith("'")) {
@@ -50,6 +56,15 @@ async function fetchPlaceholders(org, repo) {
   return {
     externalServiceUrl: lookup['external-service-url'] || '',
     externalServicePayload: rawPayload,
+  };
+}
+
+// Workfront endpoints, config-driven like the service URL.
+async function fetchWorkfrontConfig(org, repo) {
+  const lookup = await fetchPlaceholderLookup(org, repo);
+  return {
+    tasksUrl: lookup['workfront-tasks-url'] || '',
+    actionUrl: lookup['workfront-task-action-url'] || '',
   };
 }
 
@@ -169,23 +184,86 @@ async function invokeExternalService(token, context) {
   return resp.json();
 }
 
-/* ── Helpers ─────────────────────────────────────────────────────────── */
+/* ── Workfront tasks ─────────────────────────────────────────────────── */
 
-function isAdobeUser(email) {
-  return typeof email === 'string' && email.toLowerCase().endsWith('@adobe.com');
+// NOTE: Adjust field names / response shape to match your Workfront proxy.
+async function fetchWorkfrontTasks(url, userEmail) {
+  const target = new URL(url);
+  if (userEmail) target.searchParams.set('userEmail', userEmail);
+
+  const resp = await fetch(target.toString());
+  if (!resp.ok) throw new Error(`Workfront tasks fetch failed: ${resp.status}`);
+
+  const json = await resp.json();
+  const rows = json.data || json.tasks || [];
+  return rows.map((row) => ({
+    id: row.ID || row.id,
+    name: row.name || row.taskName || 'Untitled task',
+    status: (row.status || row.taskStatus || '').toUpperCase(),
+    statusLabel: row.statusLabel || row.status || '',
+  }));
+}
+
+async function updateWorkfrontTask(url, taskId, actionKey) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ taskId, action: actionKey }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`Workfront update failed: ${resp.status} – ${body}`);
+  }
+  return resp.json();
+}
+
+// Which actions are offered per Workfront status code.
+const STATUS_ACTIONS = {
+  NEW: [
+    { key: 'INP', label: 'Start' },
+    { key: 'CPL', label: 'Complete' },
+    { key: 'REJ', label: 'Reject', variant: 'secondary' },
+  ],
+  INP: [
+    { key: 'CPL', label: 'Complete' },
+    { key: 'REJ', label: 'Reject', variant: 'secondary' },
+  ],
+  CPL: [],
+  REJ: [],
+};
+
+function actionsForStatus(status) {
+  return STATUS_ACTIONS[(status || '').toUpperCase()]
+    || [{ key: 'CPL', label: 'Complete' }, { key: 'REJ', label: 'Reject', variant: 'secondary' }];
 }
 
 /* ── Lit component ───────────────────────────────────────────────────── */
 
-class ADLInvokeService extends LitElement {
+class RefDemoInvokeService extends LitElement {
   static properties = {
     token: { attribute: false },
     context: { attribute: false },
     onClose: { attribute: false },
-    _view: { state: true }, // 'confirm' | 'loading' | 'result' | 'noaccess'
+    _allowed: { state: true }, // undefined while gating, then boolean
+    _tab: { state: true }, // 'service' | 'tasks'
+    // Service tab
+    _view: { state: true }, // 'confirm' | 'loading' | 'result'
     _isSuccess: { state: true },
     _message: { state: true },
+    // Tasks tab
+    _tasksState: { state: true }, // 'idle' | 'loading' | 'loaded' | 'error'
+    _tasks: { state: true },
+    _tasksError: { state: true },
+    _busyTaskId: { state: true },
   };
+
+  constructor() {
+    super();
+    this._tab = 'service';
+    this._view = 'confirm';
+    this._tasksState = 'idle';
+    this._tasks = [];
+  }
 
   connectedCallback() {
     super.connectedCallback();
@@ -195,8 +273,11 @@ class ADLInvokeService extends LitElement {
 
   async gateUser() {
     const profile = await fetchUserProfile(this.token);
-    this._view = isAdobeUser(profile.userEmail) ? 'confirm' : 'noaccess';
+    this._allowed = typeof profile.userEmail === 'string'
+      && profile.userEmail.toLowerCase().endsWith('@adobe.com');
   }
+
+  /* ── Service tab ── */
 
   async run() {
     this._view = 'loading';
@@ -216,6 +297,56 @@ class ADLInvokeService extends LitElement {
   close() {
     if (this.onClose) this.onClose();
   }
+
+  /* ── Tasks tab ── */
+
+  selectTab(tab) {
+    this._tab = tab;
+    if (tab === 'tasks' && this._tasksState === 'idle') this.loadTasks();
+  }
+
+  async loadTasks() {
+    this._tasksState = 'loading';
+    this._tasksError = undefined;
+    try {
+      const { org, repo } = resolveOrgRepo(this.context);
+      const profile = await fetchUserProfile(this.token);
+      const cfg = await fetchWorkfrontConfig(org, repo);
+      if (!cfg.tasksUrl) {
+        throw new Error('Workfront tasks URL is not configured. Add a "workfront-tasks-url" entry to /config/placeholder.json.');
+      }
+      this._tasks = await fetchWorkfrontTasks(cfg.tasksUrl, profile.userEmail);
+      this._tasksState = 'loaded';
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[invoke-service] Tasks error:', err);
+      this._tasksError = err.message || 'Failed to load tasks.';
+      this._tasksState = 'error';
+    }
+  }
+
+  async runTaskAction(task, action) {
+    this._busyTaskId = task.id;
+    this._tasksError = undefined;
+    try {
+      const { org, repo } = resolveOrgRepo(this.context);
+      const cfg = await fetchWorkfrontConfig(org, repo);
+      if (!cfg.actionUrl) {
+        throw new Error('Workfront task-action URL is not configured. Add a "workfront-task-action-url" entry to /config/placeholder.json.');
+      }
+      await updateWorkfrontTask(cfg.actionUrl, task.id, action.key);
+      await this.loadTasks(); // refresh after a successful transition
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[invoke-service] Task action error:', err);
+      this._tasksError = err.message || 'Failed to update task.';
+      this._tasksState = 'error';
+    } finally {
+      this._busyTaskId = undefined;
+    }
+  }
+
+  /* ── Renderers ── */
 
   renderConfirm() {
     return html`
@@ -256,31 +387,106 @@ class ADLInvokeService extends LitElement {
       </div>`;
   }
 
-  render() {
+  renderService() {
     switch (this._view) {
-      case 'confirm': return this.renderConfirm();
-      case 'loading': return html`
-        <div class="invoke-service-panel">
-          <div class="invoke-service-loading">
-            <div class="spinner" aria-hidden="true"></div>
-            <p class="invoke-service-message">Executing external service…</p>
-          </div>
-        </div>`;
-      case 'result': return this.renderResult();
-      case 'noaccess': return this.renderNoAccess();
-      default: return nothing;
+      case 'loading':
+        return html`
+          <div class="invoke-service-panel">
+            <div class="invoke-service-loading">
+              <div class="spinner" aria-hidden="true"></div>
+              <p class="invoke-service-message">Executing external service…</p>
+            </div>
+          </div>`;
+      case 'result':
+        return this.renderResult();
+      case 'confirm':
+      default:
+        return this.renderConfirm();
     }
+  }
+
+  renderTask(task) {
+    const actions = actionsForStatus(task.status);
+    const busy = this._busyTaskId === task.id;
+    return html`
+      <li class="task">
+        <div class="task-info">
+          <p class="task-name">${task.name}</p>
+          <span class="task-status status-${(task.status || '').toLowerCase()}">${task.statusLabel || task.status || '—'}</span>
+        </div>
+        <div class="task-actions">
+          ${busy
+    ? html`<div class="spinner" aria-hidden="true"></div>`
+    : actions.map((a) => html`
+              <sl-button class=${a.variant || ''} @click=${() => this.runTaskAction(task, a)}>${a.label}</sl-button>`)}
+        </div>
+      </li>`;
+  }
+
+  renderTasks() {
+    switch (this._tasksState) {
+      case 'loading':
+        return html`
+          <div class="invoke-service-panel">
+            <div class="invoke-service-loading">
+              <div class="spinner" aria-hidden="true"></div>
+              <p class="invoke-service-message">Loading tasks…</p>
+            </div>
+          </div>`;
+      case 'error':
+        return html`
+          <div class="invoke-service-panel">
+            <div class="invoke-service-result">
+              <div class="invoke-service-icon">${iconFailure()}</div>
+              <p class="invoke-service-detail">${this._tasksError}</p>
+            </div>
+            <div class="invoke-service-actions">
+              <sl-button @click=${this.loadTasks}>Retry</sl-button>
+            </div>
+          </div>`;
+      case 'loaded':
+        if (!this._tasks.length) {
+          return html`<div class="invoke-service-panel"><p class="invoke-service-message">No tasks assigned to you.</p></div>`;
+        }
+        return html`<ul class="task-list">${this._tasks.map((t) => this.renderTask(t))}</ul>`;
+      default:
+        return nothing;
+    }
+  }
+
+  renderTab(id, label) {
+    const active = this._tab === id;
+    return html`
+      <button
+        role="tab"
+        aria-selected=${active}
+        class="tab ${active ? 'active' : ''}"
+        @click=${() => this.selectTab(id)}>${label}</button>`;
+  }
+
+  render() {
+    if (this._allowed === undefined) return nothing; // gate not resolved yet
+    if (!this._allowed) return this.renderNoAccess();
+
+    return html`
+      <div class="tabs" role="tablist">
+        ${this.renderTab('service', 'Service')}
+        ${this.renderTab('tasks', 'Tasks')}
+      </div>
+      <div class="tab-panel" role="tabpanel">
+        ${this._tab === 'service' ? this.renderService() : this.renderTasks()}
+      </div>`;
   }
 }
 
-customElements.define('adl-invoke-service', ADLInvokeService);
+customElements.define('refdemo-invoke-service', RefDemoInvokeService);
 
 /* ── Init ────────────────────────────────────────────────────────────── */
 
 (async function init() {
   const { context, token, actions } = await DA_SDK;
 
-  const cmp = document.createElement('adl-invoke-service');
+  const cmp = document.createElement('refdemo-invoke-service');
   cmp.token = token;
   cmp.context = context;
   cmp.onClose = () => actions.closeLibrary();
