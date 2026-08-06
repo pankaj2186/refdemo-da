@@ -1,17 +1,29 @@
 // eslint-disable-next-line import/no-unresolved
 import DA_SDK from 'https://da.live/nx/utils/sdk.js';
+// eslint-disable-next-line import/no-unresolved
+import { LitElement, html, nothing } from 'da-lit';
 
-/* ── SVG icons (inline to avoid external deps) ───────────────────────── */
+// Super Lite components (sl-button, etc.)
+import 'https://da.live/nx/public/sl/components.js';
 
-const ICON_SUCCESS = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="none">
-  <circle cx="12" cy="12" r="11" fill="#12805c"/>
-  <path d="M7 12.5l3 3 7-7" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>`;
+// Application styles (adopted into the shadow root)
+import loadStyle from '../../scripts/utils/styles.js';
 
-const ICON_FAILURE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="none">
-  <circle cx="12" cy="12" r="11" fill="#d7373f"/>
-  <path d="M8 8l8 8M16 8l-8 8" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-</svg>`;
+const styles = await loadStyle(import.meta.url);
+
+/* ── SVG icons (Lit templates) ──────────────────────────────────────── */
+
+const iconSuccess = () => html`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="none">
+    <circle cx="12" cy="12" r="11" fill="#12805c"></circle>
+    <path d="M7 12.5l3 3 7-7" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+  </svg>`;
+
+const iconFailure = () => html`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="none">
+    <circle cx="12" cy="12" r="11" fill="#d7373f"></circle>
+    <path d="M8 8l8 8M16 8l-8 8" stroke="#fff" stroke-width="2" stroke-linecap="round"></path>
+  </svg>`;
 
 /* ── Placeholders config ─────────────────────────────────────────────── */
 
@@ -157,124 +169,121 @@ async function invokeExternalService(token, context) {
   return resp.json();
 }
 
-/* ── UI rendering with Spectrum CSS ──────────────────────────────────── */
-
-function renderConfirm(root, { onConfirm, onCancel }) {
-  root.innerHTML = `
-    <div class="invoke-service-panel">
-      <p class="invoke-service-message">Invoke the external service for this document?</p>
-      <div class="invoke-service-actions">
-        <button class="spectrum-Button spectrum-Button--sizeM spectrum-Button--secondary spectrum-Button--outline" id="invoke-cancel">
-          <span class="spectrum-Button-label">Cancel</span>
-        </button>
-        <button class="spectrum-Button spectrum-Button--sizeM spectrum-Button--accent spectrum-Button--fill" id="invoke-confirm">
-          <span class="spectrum-Button-label">Confirm</span>
-        </button>
-      </div>
-    </div>`;
-  root.querySelector('#invoke-cancel').addEventListener('click', onCancel);
-  root.querySelector('#invoke-confirm').addEventListener('click', onConfirm);
-}
-
-function renderLoading(root) {
-  root.innerHTML = `
-    <div class="invoke-service-panel">
-      <div class="invoke-service-loading">
-        <div class="spectrum-ProgressCircle spectrum-ProgressCircle--indeterminate spectrum-ProgressCircle--small">
-          <div class="spectrum-ProgressCircle-track"></div>
-          <div class="spectrum-ProgressCircle-fills">
-            <div class="spectrum-ProgressCircle-fillMask1">
-              <div class="spectrum-ProgressCircle-fillSubMask1">
-                <div class="spectrum-ProgressCircle-fill"></div>
-              </div>
-            </div>
-            <div class="spectrum-ProgressCircle-fillMask2">
-              <div class="spectrum-ProgressCircle-fillSubMask2">
-                <div class="spectrum-ProgressCircle-fill"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <p class="invoke-service-message">Executing external service…</p>
-      </div>
-    </div>`;
-}
-
-function renderResult(root, { isSuccess, message, onClose }) {
-  const icon = isSuccess ? ICON_SUCCESS : ICON_FAILURE;
-  const label = isSuccess ? 'Success' : 'Failed';
-
-  root.innerHTML = `
-    <div class="invoke-service-panel">
-      <div class="invoke-service-result">
-        <div class="invoke-service-icon">${icon}</div>
-        <p class="invoke-service-label">${label}</p>
-        <p class="invoke-service-detail">${message}</p>
-      </div>
-      <div class="invoke-service-actions">
-        <button class="spectrum-Button spectrum-Button--sizeM spectrum-Button--accent spectrum-Button--fill" id="invoke-close">
-          <span class="spectrum-Button-label">Close</span>
-        </button>
-      </div>
-    </div>`;
-  root.querySelector('#invoke-close').addEventListener('click', onClose);
-}
-
-function renderNoAccess(root, { onClose }) {
-  root.innerHTML = `
-    <div class="invoke-service-panel">
-      <div class="invoke-service-result">
-        <div class="invoke-service-icon">${ICON_FAILURE}</div>
-        <p class="invoke-service-label">Access denied</p>
-        <p class="invoke-service-detail">You do not have permission to run this extension. Please contact an Adobe administrator if you believe this is a mistake.</p>
-      </div>
-      <div class="invoke-service-actions">
-        <button class="spectrum-Button spectrum-Button--sizeM spectrum-Button--accent spectrum-Button--fill" id="invoke-close">
-          <span class="spectrum-Button-label">Close</span>
-        </button>
-      </div>
-    </div>`;
-  root.querySelector('#invoke-close').addEventListener('click', onClose);
-}
-
-/* ── Helpers ──────────────────────────────────────────────────────────── */
+/* ── Helpers ─────────────────────────────────────────────────────────── */
 
 function isAdobeUser(email) {
   return typeof email === 'string' && email.toLowerCase().endsWith('@adobe.com');
 }
 
-/* ── Init ─────────────────────────────────────────────────────────────── */
+/* ── Lit component ───────────────────────────────────────────────────── */
 
-(async function init() {
-  const { context, token, actions } = await DA_SDK;
-  const root = document.getElementById('invoke-service-root');
+class ADLInvokeService extends LitElement {
+  static properties = {
+    token: { attribute: false },
+    context: { attribute: false },
+    onClose: { attribute: false },
+    _view: { state: true }, // 'confirm' | 'loading' | 'result' | 'noaccess'
+    _isSuccess: { state: true },
+    _message: { state: true },
+  };
 
-  const profile = await fetchUserProfile(token);
-  const adobeUser = isAdobeUser(profile.userEmail);
+  connectedCallback() {
+    super.connectedCallback();
+    this.shadowRoot.adoptedStyleSheets = [styles];
+    this.gateUser();
+  }
 
-  const run = async () => {
-    renderLoading(root);
-    let isSuccess = false;
-    let message = '';
+  async gateUser() {
+    const profile = await fetchUserProfile(this.token);
+    this._view = isAdobeUser(profile.userEmail) ? 'confirm' : 'noaccess';
+  }
+
+  async run() {
+    this._view = 'loading';
     try {
-      await invokeExternalService(token, context);
-      isSuccess = true;
-      message = 'The external service executed successfully.';
+      await invokeExternalService(this.token, this.context);
+      this._isSuccess = true;
+      this._message = 'The external service executed successfully.';
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[invoke-service] Error:', err);
-      isSuccess = false;
-      message = err.message || 'An unexpected error occurred.';
+      this._isSuccess = false;
+      this._message = err.message || 'An unexpected error occurred.';
     }
-    renderResult(root, { isSuccess, message, onClose: () => actions.closeLibrary() });
-  };
-
-  if (adobeUser) {
-    renderConfirm(root, {
-      onCancel: () => actions.closeLibrary(),
-      onConfirm: run,
-    });
-  } else {
-    renderNoAccess(root, { onClose: () => actions.closeLibrary() });
+    this._view = 'result';
   }
+
+  close() {
+    if (this.onClose) this.onClose();
+  }
+
+  renderConfirm() {
+    return html`
+      <div class="invoke-service-panel">
+        <p class="invoke-service-message">Invoke the external service for this document?</p>
+        <div class="invoke-service-actions">
+          <sl-button class="secondary" @click=${this.close}>Cancel</sl-button>
+          <sl-button @click=${this.run}>Confirm</sl-button>
+        </div>
+      </div>`;
+  }
+
+  renderResult() {
+    return html`
+      <div class="invoke-service-panel">
+        <div class="invoke-service-result">
+          <div class="invoke-service-icon">${this._isSuccess ? iconSuccess() : iconFailure()}</div>
+          <p class="invoke-service-label">${this._isSuccess ? 'Success' : 'Failed'}</p>
+          <p class="invoke-service-detail">${this._message}</p>
+        </div>
+        <div class="invoke-service-actions">
+          <sl-button @click=${this.close}>Close</sl-button>
+        </div>
+      </div>`;
+  }
+
+  renderNoAccess() {
+    return html`
+      <div class="invoke-service-panel">
+        <div class="invoke-service-result">
+          <div class="invoke-service-icon">${iconFailure()}</div>
+          <p class="invoke-service-label">Access denied</p>
+          <p class="invoke-service-detail">You do not have permission to run this extension. Please contact an Adobe administrator if you believe this is a mistake.</p>
+        </div>
+        <div class="invoke-service-actions">
+          <sl-button @click=${this.close}>Close</sl-button>
+        </div>
+      </div>`;
+  }
+
+  render() {
+    switch (this._view) {
+      case 'confirm': return this.renderConfirm();
+      case 'loading': return html`
+        <div class="invoke-service-panel">
+          <div class="invoke-service-loading">
+            <div class="spinner" aria-hidden="true"></div>
+            <p class="invoke-service-message">Executing external service…</p>
+          </div>
+        </div>`;
+      case 'result': return this.renderResult();
+      case 'noaccess': return this.renderNoAccess();
+      default: return nothing;
+    }
+  }
+}
+
+customElements.define('adl-invoke-service', ADLInvokeService);
+
+/* ── Init ────────────────────────────────────────────────────────────── */
+
+(async function init() {
+  const { context, token, actions } = await DA_SDK;
+
+  const cmp = document.createElement('adl-invoke-service');
+  cmp.token = token;
+  cmp.context = context;
+  cmp.onClose = () => actions.closeLibrary();
+
+  document.body.append(cmp);
 }());
