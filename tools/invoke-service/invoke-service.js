@@ -28,10 +28,10 @@ const iconFailure = () => html`
 /* ── Placeholders config ─────────────────────────────────────────────── */
 
 function buildPlaceholdersUrl(org, repo) {
-  return `https://main--${repo}--${org}.aem.live/config/placeholder.json`;
+  return `https://main--${repo}--${org}.aem.live/config/placeholders.json`;
 }
 
-// Shared key/value reader for /config/placeholder.json
+// Shared key/value reader for /config/placeholders.json
 async function fetchPlaceholderLookup(org, repo) {
   const url = buildPlaceholdersUrl(org, repo);
   const resp = await fetch(url);
@@ -59,13 +59,84 @@ async function fetchPlaceholders(org, repo) {
   };
 }
 
-// Workfront endpoints, config-driven like the service URL.
+// Static Workfront API paths, appended to the configured instance URL.
+const WORKFRONT_API_VERSION = 'v19.0';
+const WORKFRONT_API_BASE = `/attask/api/${WORKFRONT_API_VERSION}`;
+const WORKFRONT_USER_PATH = `${WORKFRONT_API_BASE}/user/search`;
+const WORKFRONT_TASKS_PATH = `${WORKFRONT_API_BASE}/task/search`;
+const WORKFRONT_TASK_ACTION_PATH = `${WORKFRONT_API_BASE}/task`;
+
+// Workfront endpoints derived from a single "workfront-instance-url"
+// (e.g. https://aemshowcase2.my.workfront.com). URLs are only built when it is set.
 async function fetchWorkfrontConfig(org, repo) {
   const lookup = await fetchPlaceholderLookup(org, repo);
+  const instance = (lookup['workfront-instance-url'] || '').replace(/\/+$/, '');
+  if (!instance) return { instance: '', tasksUrl: '', actionUrl: '' };
   return {
-    tasksUrl: lookup['workfront-tasks-url'] || '',
-    actionUrl: lookup['workfront-task-action-url'] || '',
+    instance,
+    tasksUrl: `${instance}${WORKFRONT_TASKS_PATH}`,
+    actionUrl: `${instance}${WORKFRONT_TASK_ACTION_PATH}`,
   };
+}
+
+// Resolve a Workfront user ID from an email address.
+async function fetchWorkfrontUserId(instance, email, token) {
+  const target = new URL(`${instance}${WORKFRONT_USER_PATH}`);
+  target.searchParams.set('emailAddr', email);
+  target.searchParams.set('fields', 'ID,name');
+
+  const resp = await fetch(target.toString(), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) throw new Error(`Workfront user lookup failed: ${resp.status}`);
+
+  const json = await resp.json();
+  const user = (json.data || [])[0];
+  return user ? user.ID : '';
+}
+
+/* ── Workfront tasks ─────────────────────────────────────────────────── */
+
+// Fields requested for each task in the Workfront task/search call.
+const WORKFRONT_TASK_FIELDS = [
+  'ID', 'name', 'status', 'percentComplete', 'priority', 'priorityColor', 'condition',
+  'plannedStartDate', 'plannedCompletionDate', 'commitDate', 'canStart', 'isReady',
+  'isStatusComplete', 'hasDocuments', 'hasNotes', 'hasMessages', 'numberOfChildren',
+  'taskNumber', 'workRequired', 'actualWorkRequiredDouble', 'URL',
+  'project:name', 'assignedTo:name', 'assignedToID', 'objCode',
+].join(',');
+
+async function fetchWorkfrontTasks(url, assignedToId, token) {
+  const target = new URL(url);
+  target.searchParams.set('fields', WORKFRONT_TASK_FIELDS);
+  if (assignedToId) target.searchParams.set('assignedToID', assignedToId);
+
+  const resp = await fetch(target.toString(), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) throw new Error(`Workfront tasks fetch failed: ${resp.status}`);
+
+  const json = await resp.json();
+  const rows = json.data || [];
+  return rows.map((row) => ({
+    ...row,
+    id: row.ID,
+    status: (row.status || '').toUpperCase(),
+    statusLabel: row.status || '',
+  }));
+}
+
+async function updateWorkfrontTask(url, taskId, actionKey) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ taskId, action: actionKey }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`Workfront update failed: ${resp.status} – ${body}`);
+  }
+  return resp.json();
 }
 
 /* ── User profile ────────────────────────────────────────────────────── */
@@ -139,7 +210,7 @@ async function invokeExternalService(token, context) {
   const resolvedUrl = config.externalServiceUrl;
   if (!resolvedUrl) {
     throw new Error(
-      'External service URL is not configured. Add an "external-service-url" entry to /config/placeholder.json.',
+      'External service URL is not configured. Add an "external-service-url" entry to /config/placeholders.json.',
     );
   }
 
@@ -181,39 +252,6 @@ async function invokeExternalService(token, context) {
     throw new Error(`External service error: ${resp.status} – ${errorBody}`);
   }
 
-  return resp.json();
-}
-
-/* ── Workfront tasks ─────────────────────────────────────────────────── */
-
-// NOTE: Adjust field names / response shape to match your Workfront proxy.
-async function fetchWorkfrontTasks(url, userEmail) {
-  const target = new URL(url);
-  if (userEmail) target.searchParams.set('userEmail', userEmail);
-
-  const resp = await fetch(target.toString());
-  if (!resp.ok) throw new Error(`Workfront tasks fetch failed: ${resp.status}`);
-
-  const json = await resp.json();
-  const rows = json.data || json.tasks || [];
-  return rows.map((row) => ({
-    id: row.ID || row.id,
-    name: row.name || row.taskName || 'Untitled task',
-    status: (row.status || row.taskStatus || '').toUpperCase(),
-    statusLabel: row.statusLabel || row.status || '',
-  }));
-}
-
-async function updateWorkfrontTask(url, taskId, actionKey) {
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ taskId, action: actionKey }),
-  });
-  if (!resp.ok) {
-    const body = await resp.text();
-    throw new Error(`Workfront update failed: ${resp.status} – ${body}`);
-  }
   return resp.json();
 }
 
@@ -312,10 +350,12 @@ class RefDemoInvokeService extends LitElement {
       const { org, repo } = resolveOrgRepo(this.context);
       const profile = await fetchUserProfile(this.token);
       const cfg = await fetchWorkfrontConfig(org, repo);
-      if (!cfg.tasksUrl) {
-        throw new Error('Workfront tasks URL is not configured. Add a "workfront-tasks-url" entry to /config/placeholder.json.');
+      if (!cfg.instance) {
+        throw new Error('Workfront instance URL is not configured. Add a "workfront-instance-url" entry to /config/placeholders.json.');
       }
-      this._tasks = await fetchWorkfrontTasks(cfg.tasksUrl, profile.userEmail);
+      const userId = await fetchWorkfrontUserId(cfg.instance, profile.userEmail, this.token);
+      if (!userId) throw new Error(`No Workfront user found for ${profile.userEmail}.`);
+      this._tasks = await fetchWorkfrontTasks(cfg.tasksUrl, userId, this.token);
       this._tasksState = 'loaded';
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -332,7 +372,7 @@ class RefDemoInvokeService extends LitElement {
       const { org, repo } = resolveOrgRepo(this.context);
       const cfg = await fetchWorkfrontConfig(org, repo);
       if (!cfg.actionUrl) {
-        throw new Error('Workfront task-action URL is not configured. Add a "workfront-task-action-url" entry to /config/placeholder.json.');
+        throw new Error('Workfront instance URL is not configured. Add a "workfront-instance-url" entry to /config/placeholders.json.');
       }
       await updateWorkfrontTask(cfg.actionUrl, task.id, action.key);
       await this.loadTasks(); // refresh after a successful transition
