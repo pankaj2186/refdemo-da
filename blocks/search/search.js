@@ -83,6 +83,32 @@ export async function fetchData(source) {
   return json.data;
 }
 
+function getSnippet(result, searchTerms) {
+  const sourceText = (result.body || result.description || '').trim();
+  if (!sourceText) return '';
+  const lc = sourceText.toLowerCase();
+  let bestIdx = -1;
+  // Prefer exact phrase if present
+  // if (searchPhrase && searchPhrase.length >= 2) {
+  //   const phraseIdx = lc.indexOf(searchPhrase);
+  //   if (phraseIdx >= 0) bestIdx = phraseIdx;
+  // }
+  searchTerms.forEach((t) => {
+    const idx = lc.indexOf(t.toLowerCase());
+    if (idx >= 0 && (bestIdx === -1 || idx < bestIdx)) bestIdx = idx;
+  });
+  let start = 0;
+  let end = Math.min(sourceText.length, 180);
+  if (bestIdx >= 0) {
+    start = Math.max(0, bestIdx - 60);
+    end = Math.min(sourceText.length, bestIdx + 120);
+  }
+  let snippet = sourceText.slice(start, end).replace(/\s+/g, ' ').trim();
+  if (start > 0) snippet = `… ${snippet}`;
+  if (end < sourceText.length) snippet = `${snippet} …`;
+  return snippet;
+}
+
 function renderResult(result, searchTerms, titleTag) {
   const li = document.createElement('li');
   const a = document.createElement('a');
@@ -97,16 +123,25 @@ function renderResult(result, searchTerms, titleTag) {
   if (result.title) {
     const title = document.createElement(titleTag);
     title.className = 'search-result-title';
-    const link = document.createElement('a');
-    link.href = result.path;
-    link.textContent = result.title;
-    highlightTextElements(searchTerms, [link]);
-    title.append(link);
+    // const link = document.createElement('a');
+    // link.href = result.path;
+    title.textContent = result.title;
+    highlightTextElements(searchTerms, [title]);
+    // title.append(link);
     a.append(title);
   }
-  if (result.description) {
+  // if (result.description) {
+  //   const description = document.createElement('p');
+  //   description.textContent = result.description;
+  //   highlightTextElements(searchTerms, [description]);
+  //   a.append(description);
+  // }
+  const snippet = getSnippet(result, searchTerms);
+
+  if (snippet) {
     const description = document.createElement('p');
-    description.textContent = result.description;
+    // description.className = 'search-result-snippet';
+    description.textContent = snippet;
     highlightTextElements(searchTerms, [description]);
     a.append(description);
   }
@@ -117,6 +152,7 @@ function renderResult(result, searchTerms, titleTag) {
 function clearSearchResults(block) {
   const searchResults = block.querySelector('.search-results');
   searchResults.innerHTML = '';
+  searchResults.style.display = 'none';
 }
 
 function clearSearch(block) {
@@ -132,6 +168,7 @@ function clearSearch(block) {
 async function renderResults(block, config, filteredData, searchTerms) {
   clearSearchResults(block);
   const searchResults = block.querySelector('.search-results');
+  searchResults.style.display = 'block';
   const headingTag = searchResults.dataset.h;
 
   if (filteredData.length) {
@@ -170,7 +207,7 @@ function filterData(searchTerms, data) {
       return;
     }
 
-    const metaContents = `${result.title} ${result.description} ${result.path.split('/').pop()}`.toLowerCase();
+    const metaContents = `${result.title} ${result.description} ${result.body} ${result.path.split('/').pop()}`.toLowerCase();
     searchTerms.forEach((term) => {
       const idx = metaContents.indexOf(term);
       if (idx < 0) return;
@@ -243,8 +280,8 @@ function searchBox(block, config) {
   const box = document.createElement('div');
   box.classList.add('search-box');
   box.append(
-    searchIcon(),
     searchInput(block, config),
+    searchIcon(),  
   );
 
   return box;
@@ -252,18 +289,84 @@ function searchBox(block, config) {
 
 export default async function decorate(block) {
   const placeholders = await fetchPlaceholders();
-  const source = block.querySelector('a[href]') ? block.querySelector('a[href]').href : '/query-index.json';
+  const source = block.querySelector('a[href]') ? block.querySelector('a[href]').href : '/en/query-index.json';
   block.innerHTML = '';
-  block.append(
+  // added by bs 
+   block.classList.add('search-icon');
+
+  // Search trigger
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'search-trigger';
+  trigger.setAttribute('aria-label', 'Open search');
+
+  trigger.append(searchIcon());
+
+  // Search overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'search-overlay';
+
+  // Overlay panel
+  const panel = document.createElement('div');
+  panel.className = 'search-overlay-panel';
+
+  // Search input goes INSIDE overlay
+  panel.append(
     searchBox(block, { source, placeholders }),
     searchResultsContainer(block),
   );
 
-  if (searchParams.get('q')) {
-    const input = block.querySelector('input');
-    input.value = searchParams.get('q');
-    input.dispatchEvent(new Event('input'));
-  }
+  overlay.append(panel);
+
+  block.append(
+    trigger,
+    overlay,
+  );
+
+  // Open overlay
+  const openOverlay = () => {
+    overlay.classList.add('open');
+
+    const input = overlay.querySelector('input.search-input');
+
+    if (input) {
+      input.focus();
+    }
+  };
+
+  // Close overlay
+  const closeOverlay = () => {
+    overlay.classList.remove('open');
+    clearSearch(block);
+  };
+
+  trigger.addEventListener('click', openOverlay);
+
+  // Close when clicking outside the panel
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      closeOverlay();
+    }
+  });
+
+  // Close with Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay.classList.contains('open')) {
+      closeOverlay();
+    }
+  });
+// commented by bs
+
+  // block.append(
+  //   searchBox(block, { source, placeholders }),
+  //   searchResultsContainer(block),
+  // );
+
+  // if (searchParams.get('q')) {
+  //   const input = block.querySelector('input');
+  //   input.value = searchParams.get('q');
+  //   input.dispatchEvent(new Event('input'));
+  // }
 
   decorateIcons(block);
 }

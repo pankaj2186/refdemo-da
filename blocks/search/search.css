@@ -1,4 +1,41 @@
 /* search box */
+.search.search-icon .search-trigger {
+  border: none;
+  background: transparent;
+  padding: 4px;
+  cursor: pointer;
+}
+.search.search-icon .search-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  background: color-mix(in srgb, var(--dark-color) 20%, transparent);
+  z-index: 10000;
+  padding: 10vh 16px 16px;
+}
+.search.search-icon .search-overlay.open { display: flex; }
+
+.search.search-icon .search-overlay-panel {
+  width: min(960px, 100%);
+  background: var(--background-color);
+  border: 1px solid #dadada;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+  padding: 16px;
+}
+.search.search-icon .search-overlay-panel .search-box {
+  max-width: unset;
+  margin: 0 0 0 0;
+}
+.search.search-icon .search-overlay-panel .search-dropdown {
+  position: static;
+}
+/* search box */
+
+
 .search .search-box {
   display: grid;
   grid-template-columns: auto 1fr;
