@@ -518,6 +518,3 @@ picture {
 .hero.block.overlay .button-container.cta-link a.button::after  ,.hero.image-background-text-left .button-container.cta-link a.button::after,.hero.image-background-text-right .button-container.cta-link a.button::after  {
   color: var(--text-light);
 }
-body{
-  background-color: var(--brand-theme-color);
-}
