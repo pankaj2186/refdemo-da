@@ -169,6 +169,77 @@ export async function fetchLanguagePlaceholders() {
   return {}; // default to empty object
 }
 
+// get theme function
+
+async function getThemeValue() {
+  console.log('Before fetching placeholders');
+
+  const placeholders = await fetchPlaceholders('config');
+
+  console.log('Placeholders returned:', placeholders);
+  const themePath = placeholders.theme;
+
+  console.log('Theme path:', themePath);
+
+  if (!themePath) {
+    console.error('Theme path not found in placeholders');
+    return null;
+  }
+
+  // Build the structured-content JSON URL
+  const themeUrl = `https://da-sc.adobeaem.workers.dev/live/pankaj2186/refdemo-da${themePath}`;
+
+  console.log('Theme JSON URL:', themeUrl);
+
+  // Fetch the JSON data
+  const response = await fetch(themeUrl);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch theme JSON: ${response.status}`);
+  }
+
+  const themeData = await response.json();
+
+  console.log('Theme JSON data:', themeData);
+
+  return themeData;
+}
+
+
+async function applyTheme() {
+
+  const themeData = await getThemeValue();
+  const theme = themeData?.data;
+
+  if (!theme) {
+    console.error('Theme data is missing');
+    return;
+  }
+
+  const style = document.createElement('style');
+
+  const cssVariables = Object.entries(theme)
+    .filter(([key, value]) => (
+      /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key)
+      && typeof value === 'string'
+      && value.trim()
+    ))
+    .map(([key, value]) => {
+      const variableName = key
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .toLowerCase();
+
+      return `  --${variableName}: ${value};`;
+    });
+
+  style.textContent = `:root {\n${cssVariables.join('\n')}\n}`;
+
+  document.head.append(style);
+}
+
+  
+
+
 /**
  * Builds all synthetic blocks in a container element.
  * @param {Element} main The container element
@@ -328,6 +399,10 @@ function loadDelayed() {
 
 async function loadPage() {
   window.wbgData ||= {};
+    
+  // const themeData = await getThemeValue();
+  applyTheme();
+  
   await loadEager(document);
   await loadLazy(document);
   loadDelayed();
