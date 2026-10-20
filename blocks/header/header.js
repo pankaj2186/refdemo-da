@@ -1,5 +1,10 @@
 import { fetchPlaceholders, getMetadata } from '../../scripts/aem.js';
 import { loadFragment } from '../fragment/fragment.js';
+import {
+  getLanguage,
+  computeLocalizedUrl,
+  discoverLanguagesFromPlaceholders,
+} from '../../scripts/utils.js';
 
 // media query match that indicates mobile/tablet width
 const isDesktop = window.matchMedia('(min-width: 900px)');
@@ -173,14 +178,109 @@ async function buildBreadcrumbs() {
   return breadcrumbs;
 }
 
+async function createLanguageSwitcher(navTools, langs = ['en']) {
+  const currentLang = getLanguage(langs);
+
+  const langWrap = document.createElement('div');
+  langWrap.className = 'lang-switcher';
+
+  const langButton = document.createElement('button');
+  langButton.type = 'button';
+  langButton.className = 'lang-button';
+  langButton.setAttribute('aria-haspopup', 'listbox');
+  langButton.setAttribute('aria-expanded', 'false');
+  langButton.textContent = currentLang.toUpperCase();
+
+  const langMenu = document.createElement('ul');
+  langMenu.className = 'lang-menu';
+  langMenu.setAttribute('role', 'listbox');
+
+  if (langs.length <= 1) {
+    langButton.disabled = true;
+    langWrap.classList.add('single-lang');
+  }
+
+  langs.forEach((raw) => {
+    const code = String(raw)
+      .replace('_', '-')
+      .toLowerCase();
+
+    const [langPart, regionPart] = code.split('-');
+
+    const displayCode = `${langPart}${regionPart ? `-${regionPart}` : ''}`.toUpperCase();
+
+    const langItem = document.createElement('li');
+    langItem.className = 'lang-item';
+    langItem.setAttribute('role', 'option');
+
+    langItem.setAttribute(
+      'aria-selected',
+      langPart === currentLang ? 'true' : 'false',
+    );
+
+    const langLink = document.createElement('a');
+
+    // Actual language-switch URL
+    langLink.href = computeLocalizedUrl(langPart);
+
+    const langName = document.createElement('span');
+    langName.className = 'lang-country';
+    langName.textContent = langPart.toUpperCase();
+
+    const langCode = document.createElement('span');
+    langCode.className = 'lang-pretitle';
+    langCode.textContent = displayCode;
+
+    langLink.append(langName, langCode);
+    langItem.append(langLink);
+    langMenu.append(langItem);
+  });
+
+  // Open / close dropdown
+  langButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+
+    const expanded = langButton.getAttribute('aria-expanded') === 'true';
+
+    langButton.setAttribute(
+      'aria-expanded',
+      expanded ? 'false' : 'true',
+    );
+
+    langWrap.classList.toggle('open', !expanded);
+  });
+
+  // Close when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!langWrap.contains(e.target)) {
+      langButton.setAttribute('aria-expanded', 'false');
+      langWrap.classList.remove('open');
+    }
+  });
+
+  // Close on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      langButton.setAttribute('aria-expanded', 'false');
+      langWrap.classList.remove('open');
+    }
+  });
+
+  langWrap.append(langButton, langMenu);
+  navTools.append(langWrap);
+}
 /**
  * loads and decorates the header, mainly the nav
  * @param {Element} block The header block element
  */
 export default async function decorate(block) {
+  // await discoverLanguagesFromPlaceholders();
   // load nav as fragment
+  const langs = await discoverLanguagesFromPlaceholders();
   const navMeta = getMetadata('nav');
-  const navPath = navMeta ? new URL(navMeta, window.location).pathname : '/nav';
+  const currentLang = getLanguage(langs);
+  const defaultNavPath = currentLang === 'en' ? '/nav' : `/${currentLang}/nav`;
+  const navPath = navMeta ? new URL(navMeta, window.location).pathname : defaultNavPath;
   const fragment = await loadFragment(navPath);
 
   // decorate nav DOM
@@ -217,11 +317,13 @@ export default async function decorate(block) {
   }
 
   const navTools = nav.querySelector('.nav-tools');
+
   if (navTools) {
     const search = navTools.querySelector('a[href*="search"]');
     if (search && search.textContent === '') {
       search.setAttribute('aria-label', 'Search');
     }
+    await createLanguageSwitcher(navTools, langs);
   }
 
   // hamburger for mobile

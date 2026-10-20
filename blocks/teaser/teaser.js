@@ -97,13 +97,14 @@ function attachListeners() {
 
 export default function decorate(block) {
   const rows = [...block.children];
-  const getCell = (i) => rows[i]?.querySelector(':scope > div');
+  const getCell = (i) => rows[i]?.querySelector(':scope > div:nth-child(2)');
 
   const blurbCell = getCell(0);
   const styleCell = getCell(1);
   const videoCell = getCell(2);
   const imageCell = getCell(3);
   const buttonCell = getCell(4);
+  const buttonLinkCell = getCell(5);
 
   const blurbP = blurbCell?.querySelector('p');
   const teaserBlurb = blurbP ? blurbP.innerHTML : (blurbCell?.textContent?.trim() || 'Title');
@@ -118,6 +119,9 @@ export default function decorate(block) {
   const imgAlt = imgEl?.getAttribute('alt') || '';
 
   const buttonText = buttonCell?.textContent?.trim() || 'Button';
+  const buttonLink = buttonLinkCell?.querySelector('a')?.href
+  || buttonLinkCell?.textContent?.trim()
+  || '#';
 
   const isVideo = teaserStyle === 'video';
   const videoReference = isVideo && videoUrl ? videoUrl : SAMPLE_VIDEO;
@@ -137,7 +141,7 @@ export default function decorate(block) {
       div({ class: 'teaser-title-wrapper' },
         h2({ class: 'teaser-title' }),
         div({ class: 'button-container' },
-          a({ id: 'button', href: '', class: 'button dark-bg' },
+          a({ id: 'button', href: buttonLink, class: 'button dark-bg' },
             span({ class: 'button-text' }, buttonText),
           ),
         ),

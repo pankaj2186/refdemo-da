@@ -15,7 +15,7 @@ export default function decorate(block) {
   // Find the first row index that should be a carousel item
   let carouselStartIndex = -1;
   [...block.children].forEach((row, index) => {
-    if (row.children.length === 4 && carouselStartIndex === -1) {
+    if (row.children.length >= 3 && carouselStartIndex === -1) {
       carouselStartIndex = index;
     }
   });

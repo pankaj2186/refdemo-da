@@ -340,3 +340,24 @@ loadPage();
   // eslint-disable-next-line import/no-unresolved
   import('https://da.live/scripts/dapreview.js').then(({ default: daPreview }) => daPreview(loadPage));
 }());
+
+// Temporary Structured Content test
+fetch('https://da-sc.adobeaem.workers.dev/live/harshal759/wknd-da/people/saira')
+  .then((response) => response.json())
+  .then((person) => {
+   const main = document.querySelector('main');
+
+    if (!main) return;
+
+    const personDiv = document.createElement('div');
+    personDiv.innerHTML = `
+      <h2>${person.data.name}</h2>
+      <p>Age: ${person.data.age}</p>
+      <p>Email: ${person.data.email}</p>
+    `;
+
+    main.appendChild(personDiv);
+  })
+  .catch((error) => {
+    console.error('Person fetch failed:', error);
+  });
