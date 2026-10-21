@@ -97,7 +97,7 @@ function attachListeners() {
 
 export default function decorate(block) {
   const rows = [...block.children];
-  const getCell = (i) => rows[i]?.querySelector(':scope > div');
+  const getCell = (i) => rows[i]?.querySelector(':scope > div:nth-child(2)');
 
   const blurbCell = getCell(0);
   const styleCell = getCell(1);
