@@ -172,14 +172,29 @@ export async function fetchLanguagePlaceholders() {
 // get theme function
 
 async function getThemeValue() {
-  console.log('Before fetching placeholders');
+  const hostname = window.location.hostname;
+
+const match = hostname.match(
+  /^(.*?)--([a-z0-9-]+)--([a-z0-9-]+)\.aem\.(?:page|live)$/i,
+);
+
+if (!match) {
+  throw new Error(`Invalid EDS hostname: ${hostname}`);
+}
+
+const [, branch, repo, org] = match;
+
+// console.log('Branch:', branch);
+// console.log('Repository:', repo);
+// console.log('Organization:', org);
+//   console.log('Before fetching placeholders');
 
   const placeholders = await fetchPlaceholders('config');
 
-  console.log('Placeholders returned:', placeholders);
+  // console.log('Placeholders returned:', placeholders);
   const themePath = placeholders.theme;
 
-  console.log('Theme path:', themePath);
+  // console.log('Theme path:', themePath);
 
   if (!themePath) {
     console.error('Theme path not found in placeholders');
@@ -187,9 +202,9 @@ async function getThemeValue() {
   }
 
   // Build the structured-content JSON URL
-  const themeUrl = `https://da-sc.adobeaem.workers.dev/live/pankaj2186/refdemo-da${themePath}`;
+  const themeUrl = `https://da-sc.adobeaem.workers.dev/live/${org}/${repo}${themePath}`;
 
-  console.log('Theme JSON URL:', themeUrl);
+  // console.log('Theme JSON URL:', themeUrl);
 
   // Fetch the JSON data
   const response = await fetch(themeUrl);
@@ -200,7 +215,7 @@ async function getThemeValue() {
 
   const themeData = await response.json();
 
-  console.log('Theme JSON data:', themeData);
+  // console.log('Theme JSON data:', themeData);
 
   return themeData;
 }
