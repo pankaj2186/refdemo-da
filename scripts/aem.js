@@ -527,9 +527,9 @@ async function fetchPlaceholders(prefix = 'default') {
         .then((json) => {
           const placeholders = {};
           json.data
-            ?.filter((placeholder) => placeholder.Key)
+            ?.filter((placeholder) => placeholder.key)
             .forEach((placeholder) => {
-              placeholders[toCamelCase(placeholder.Key)] = placeholder.Text;
+              placeholders[toCamelCase(placeholder.key)] = placeholder.value;
             });
           window.placeholders[prefix] = placeholders;
           resolve(window.placeholders[prefix]);

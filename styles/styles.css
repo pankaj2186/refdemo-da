@@ -465,6 +465,7 @@ a::after, a.button::after {
   border-radius: 0;
   padding: 1px 10px;
   cursor: pointer;
+}
 
 a.button[aria-disabled="true"],
 button.button:disabled {
@@ -495,6 +496,8 @@ button:disabled::after,
 button:disabled:hover::after {
   color: var(--text-disabled);
   cursor: unset;
+}
+
 a.button.primary,
 button.button.primary {
   border-color: var(--text-color);
@@ -926,4 +929,6 @@ table {
   box-sizing: border-box;
 }
 
+
 /* Responsive styles- end */
+
