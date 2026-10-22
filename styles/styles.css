@@ -935,14 +935,7 @@ table {
 
 /* Dynamic brand colors only */
 
-:root {
-  --brand-theme-color: #00195c;
-  --brand-dark-color: #111827;
-  --brand-light-color: #ffffff;
-  --brand-link-color: #ffffff;
-  --brand-link-hover-color: #00195c;
-  --brand-text-color: #111827;
-}
+
 
 :root {
   --brand-theme-gradient: linear-gradient(
