@@ -183,29 +183,17 @@ if (!match) {
 }
 
 const [, branch, repo, org] = match;
-
-// console.log('Branch:', branch);
-// console.log('Repository:', repo);
-// console.log('Organization:', org);
-//   console.log('Before fetching placeholders');
-
-  const placeholders = await fetchPlaceholders('config');
-
-  // console.log('Placeholders returned:', placeholders);
-  const themePath = placeholders.theme;
-
-  // console.log('Theme path:', themePath);
+const placeholders = await fetchPlaceholders('config');
+const themePath = placeholders.theme;
 
   if (!themePath) {
     console.error('Theme path not found in placeholders');
     return null;
   }
 
-  // Build the structured-content JSON URL
-  const themeUrl = `https://da-sc.adobeaem.workers.dev/live/${org}/${repo}${themePath}`;
-
-  // console.log('Theme JSON URL:', themeUrl);
-
+//   // Build the structured-content JSON URL
+ const themeUrl = `https://da-sc.adobeaem.workers.dev/live/${org}/${repo}${themePath}`;
+// const themeUrl = `https://da-sc.adobeaem.workers.dev/live/pankaj2186/refdemo-da${themePath}`;
   // Fetch the JSON data
   const response = await fetch(themeUrl);
 
@@ -214,8 +202,6 @@ const [, branch, repo, org] = match;
   }
 
   const themeData = await response.json();
-
-  // console.log('Theme JSON data:', themeData);
 
   return themeData;
 }

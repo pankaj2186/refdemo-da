@@ -935,122 +935,89 @@ table {
  temporary demo  Brand Theme: Navy Blue
 ================================ */
 
+
+/* Dynamic brand colors only */
+
 :root {
   --brand-theme-gradient: linear-gradient(
     135deg,
-    var(--brand-theme-color, #00195c) 0%,
-    #163b8c 55%,
-    #3268b8 100%
+    var(--brand-theme-color),
+    color-mix(
+      in srgb,
+      var(--brand-theme-color) 75%,
+      var(--brand-dark-color)
+    ),
+    var(--brand-dark-color)
   );
 
-  --brand-soft-background: #f2f6fc;
-  --brand-card-shadow: 0 6px 18px rgba(0, 15, 60, 0.12);
-  --brand-card-hover-shadow: 0 14px 28px rgba(0, 15, 60, 0.22);
+  --brand-soft-background: color-mix(
+    in srgb,
+    var(--brand-light-color) 94%,
+    var(--brand-theme-color)
+  );
+
+  --brand-card-shadow: 0 6px 18px
+    color-mix(in srgb, var(--brand-dark-color) 12%, transparent);
+
+  --brand-card-hover-shadow: 0 14px 28px
+    color-mix(in srgb, var(--brand-dark-color) 22%, transparent);
 }
 
-/* Gradient hero */
+/* Hero */
 main .hero-container {
-  background: var(--brand-theme-gradient);
-  color: var(--brand-light-color, #ffffff);
+  background: var(--brand-soft-gradient);
+  color: var(--brand-theme-color);
 }
 
-/* Gradient highlighted sections */
+/* Highlighted sections */
 main .section.bg-theme {
-  background: var(--brand-theme-gradient);
-  color: #ffffff;
+  background: var(--brand-soft-gradient);
+  color: var(--brand-text-color);
 }
 
-/* Cards layout */
-.cards.block > ul {
-  gap: 24px;
-}
-
-/* Individual cards */
+/* Cards */
 .cards.block > ul > li {
-  overflow: hidden;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #ffffff;
+  border-color: color-mix(
+    in srgb,
+    var(--brand-dark-color) 15%,
+    var(--brand-light-color)
+  );
+  background: var(--brand-soft-gradient);
   box-shadow: var(--brand-card-shadow);
-  transition:
-    transform 0.3s ease,
-    box-shadow 0.3s ease;
 }
 
-/* Card hover effect */
 .cards.block > ul > li:hover {
-  transform: translateY(-6px);
   box-shadow: var(--brand-card-hover-shadow);
 }
 
-/* Card images */
-.cards.block .cards-card-image picture {
-  overflow: hidden;
-}
-
-.cards.block .cards-card-image img {
-  display: block;
-  width: 100%;
-  height: 260px;
-  object-fit: cover;
-  transition: transform 0.4s ease;
-}
-
-/* Slight image zoom on hover */
-.cards.block > ul > li:hover .cards-card-image img {
-  transform: scale(1.04);
-}
-
-/* Card text area */
+/* Card text */
 .cards.block .cards-card-body {
-  padding: 20px;
-  background: #ffffff;
-  color: var(--brand-text-color, #111827);
+  background: var(--brand-light-color);
+  color: var(--brand-text-color);
 }
 
 /* Card headings */
-.cards.block .cards-card-body h3 {
-  color: var(--brand-theme-color, #00195c);
-  transition: color 0.3s ease;
+.cards.block .cards-card-body h3 ,
+.cards-card-body h2{
+  color: var(--brand-theme-color);
 }
 
 .cards.block > ul > li:hover .cards-card-body h3 {
-  color: #3268b8;
+  color: var(--brand-link-hover-color);
 }
 
 /* Primary buttons */
 a.button.primary,
-button.button.primary {
-  background: var(--brand-theme-gradient);
-  color: #ffffff;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 12px 24px;
-  transition:
-    transform 0.3s ease,
-    box-shadow 0.3s ease,
-    filter 0.3s ease;
+button.button.primary,
+a {
+  background: var(--brand-theme-color);
+  color: var(--brand-link-color);
+  border-color: var(--brand-theme-color);
 }
 
 a.button.primary:hover,
-button.button.primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 18px rgba(0, 25, 92, 0.25);
-  filter: brightness(1.12);
-}
-
-/* Accessibility: reduce animation when requested */
-@media (prefers-reduced-motion: reduce) {
-  .cards.block > ul > li,
-  .cards.block .cards-card-image img,
-  a.button.primary,
-  button.button.primary {
-    transition: none;
-  }
-
-  .cards.block > ul > li:hover,
-  a.button.primary:hover,
-  button.button.primary:hover {
-    transform: none;
-  }
+button.button.primary:hover,
+a:hover {
+  background: var(--brand-link-hover-color);
+  border-color: var(--brand-link-hover-color);
 }
