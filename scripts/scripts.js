@@ -169,77 +169,67 @@ export async function fetchLanguagePlaceholders() {
   return {}; // default to empty object
 }
 
-// get theme function
+// Theme: the site's tokens live in a structured-content JSON that the config placeholders
+// sheet points at, and are applied as CSS custom properties on :root.
+const THEME_CACHE_KEY = `theme:${window.location.hostname}`;
 
-async function getThemeValue() {
-  const hostname = window.location.hostname;
-
-const match = hostname.match(
-  /^(.*?)--([a-z0-9-]+)--([a-z0-9-]+)\.aem\.(?:page|live)$/i,
-);
-
-if (!match) {
-  throw new Error(`Invalid EDS hostname: ${hostname}`);
+/**
+ * Applies theme tokens as CSS custom properties on the document root. Names are limited to
+ * simple identifiers and values go through the style API, so a token cannot add rules of its own.
+ * @param {object} theme Token name to value
+ */
+function setThemeVariables(theme) {
+  Object.entries(theme)
+    .filter(([key, value]) => /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key)
+      && typeof value === 'string'
+      && value.trim())
+    .forEach(([key, value]) => {
+      const variableName = key.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+      document.documentElement.style.setProperty(`--${variableName}`, value.trim());
+    });
 }
 
-const [, branch, repo, org] = match;
-const placeholders = await fetchPlaceholders('config');
-const themePath = placeholders.theme;
-
-  if (!themePath) {
-    console.error('Theme path not found in placeholders');
-    return null;
-  }
-
-//   // Build the structured-content JSON URL
- const themeUrl = `https://da-sc.adobeaem.workers.dev/live/${org}/${repo}${themePath}`;
-// const themeUrl = `https://da-sc.adobeaem.workers.dev/live/pankaj2186/refdemo-da${themePath}`;
-  // Fetch the JSON data
-  const response = await fetch(themeUrl);
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch theme JSON: ${response.status}`);
-  }
-
-  const themeData = await response.json();
-
-  return themeData;
+/**
+ * Builds the theme JSON URL from the EDS hostname and the config placeholders.
+ * @returns {Promise<string|null>} The URL, or null when there is no theme to load
+ */
+async function getThemeUrl() {
+  const match = window.location.hostname.match(/^.*?--([a-z0-9-]+)--([a-z0-9-]+)\.aem\.(?:page|live)$/i);
+  if (!match) return null; // localhost or a custom domain
+  const [, repo, org] = match;
+  const config = await fetchPlaceholders('/config');
+  if (!config.theme) return null;
+  return `https://da-sc.adobeaem.workers.dev/live/${org}/${repo}${config.theme}`;
 }
-
 
 async function applyTheme() {
+  try {
+    // the last visit's theme first, so a repeat view does not flash the default look
+    try {
+      const cached = JSON.parse(window.sessionStorage.getItem(THEME_CACHE_KEY));
+      if (cached) setThemeVariables(cached);
+    } catch (e) {
+      // no usable cached theme
+    }
 
-  const themeData = await getThemeValue();
-  const theme = themeData?.data;
+    const themeUrl = await getThemeUrl();
+    if (!themeUrl) return;
+    const response = await fetch(themeUrl);
+    if (!response.ok) throw new Error(`Failed to fetch theme JSON: ${response.status}`);
+    const theme = (await response.json())?.data;
+    if (!theme) return;
 
-  if (!theme) {
-    console.error('Theme data is missing');
-    return;
+    setThemeVariables(theme);
+    try {
+      window.sessionStorage.setItem(THEME_CACHE_KEY, JSON.stringify(theme));
+    } catch (e) {
+      // storage unavailable
+    }
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Could not apply the theme:', error);
   }
-
-  const style = document.createElement('style');
-
-  const cssVariables = Object.entries(theme)
-    .filter(([key, value]) => (
-      /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key)
-      && typeof value === 'string'
-      && value.trim()
-    ))
-    .map(([key, value]) => {
-      const variableName = key
-        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-        .toLowerCase();
-
-      return `  --${variableName}: ${value};`;
-    });
-
-  style.textContent = `:root {\n${cssVariables.join('\n')}\n}`;
-
-  document.head.append(style);
 }
-
-  
-
 
 /**
  * Builds all synthetic blocks in a container element.
@@ -400,10 +390,9 @@ function loadDelayed() {
 
 async function loadPage() {
   window.wbgData ||= {};
-    
-  // const themeData = await getThemeValue();
-  applyTheme();
-  
+
+  applyTheme(); // not awaited: it must not hold up rendering, and it handles its own errors
+
   await loadEager(document);
   await loadLazy(document);
   loadDelayed();
