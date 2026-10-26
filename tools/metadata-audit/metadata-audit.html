@@ -1,0 +1,57 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metadata Audit</title>
+  <link rel="stylesheet" href="./metadata-audit.css">
+</head>
+<body>
+  <main class="audit-app">
+    <header class="audit-header">
+      <p class="eyebrow">DA.LIVE DEVELOPER TOOLS</p>
+      <h1>Metadata Audit</h1>
+      <p>Check the metadata quality of any published page.</p>
+    </header>
+
+    <section class="audit-form">
+      <label for="page-url">Page URL</label>
+      <div class="url-input-group">
+        <input
+          id="page-url"
+          type="url"
+          placeholder="https://main--site--org.aem.live/"
+          required
+        >
+        <button id="audit-button" type="button">Audit page</button>
+      </div>
+      <p id="status" role="status">Enter a published page URL to begin.</p>
+    </section>
+
+    <section id="results" hidden>
+      <h2>Audit results</h2>
+
+      <div class="summary">
+        <div class="summary-card">
+          <span>Passed</span>
+          <strong id="passed-count">0</strong>
+        </div>
+        <div class="summary-card">
+          <span>Warnings</span>
+          <strong id="warning-count">0</strong>
+        </div>
+        <div class="summary-card">
+          <span>Errors</span>
+          <strong id="error-count">0</strong>
+        </div>
+      </div>
+
+      <div id="page-details"></div>
+      <div id="audit-results"></div>
+    </section>
+  </main>
+
+  <script type="module" src="./metadata-audit.js"></script>
+</body>
+</html>

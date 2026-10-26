@@ -1,0 +1,121 @@
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f5f7fa;
+  color: #202124;
+  font-family: Arial, sans-serif;
+}
+
+.audit-app {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 36px 24px;
+}
+
+.audit-header {
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  color: #3157a4;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+.audit-header h1 {
+  margin: 12px 0;
+  font-size: 32px;
+}
+
+.audit-header p:last-child,
+#status {
+  color: #5f6368;
+}
+
+.audit-form,
+.summary-card {
+  padding: 20px;
+  border: 1px solid #e0e3e7;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.audit-form label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.url-input-group {
+  display: flex;
+  gap: 12px;
+}
+
+.url-input-group input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #c8cdd4;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+button {
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 6px;
+  background: #234b9b;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.summary-card span,
+.summary-card strong {
+  display: block;
+}
+
+.summary-card span {
+  color: #5f6368;
+  font-size: 14px;
+}
+
+.summary-card strong {
+  margin-top: 8px;
+  font-size: 28px;
+}
+
+.audit-result {
+  margin: 12px 0;
+  padding: 16px;
+  border: 1px solid #e0e3e7;
+  border-radius: 8px;
+  background: white;
+}
+
+@media (max-width: 600px) {
+  .url-input-group {
+    flex-direction: column;
+  }
+
+  .summary {
+    grid-template-columns: 1fr;
+  }
+}
