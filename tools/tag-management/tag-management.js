@@ -2,7 +2,7 @@
 import DA_SDK from 'https://da.live/nx/utils/sdk.js';
 import { LitElement, html } from 'da-lit';
 
-const CONFIG_PATH = 'tag-catalogue/namespaces';
+const CONFIG_PATH = 'config/tag-catalogue';
 
 class TagManagement extends LitElement {
   static properties = {
@@ -97,11 +97,12 @@ class TagManagement extends LitElement {
       ];
 
       const config = {
-        ':sheetname': 'namespaces',
-        ':type': 'sheet',
-        total: updatedRows.length,
-        data: updatedRows,
-      };
+  ...existing,
+  ':sheetname': existing?.[':sheetname'] || 'tag-catalogue',
+  ':type': existing?.[':type'] || 'sheet',
+  total: updatedRows.length,
+  data: updatedRows,
+};
 
       const formData = new FormData();
       formData.append('config', JSON.stringify(config));
