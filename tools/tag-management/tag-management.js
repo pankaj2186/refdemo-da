@@ -2,7 +2,7 @@
 import DA_SDK from 'https://da.live/nx/utils/sdk.js';
 import { LitElement, html } from 'da-lit';
 
-const CONFIG_PATH = 'config/tag-catalogue';
+const CONFIG_PATH = 'config/tag-catalogue.json';
 
 class TagManagement extends LitElement {
   static properties = {
@@ -30,37 +30,33 @@ class TagManagement extends LitElement {
     await this.loadNamespaces();
   }
 
-  async getConfig() {
-    const response = await fetch(
-      `https://admin.da.live/config/${this.org}/${this.repo}/${CONFIG_PATH}`,
-      {
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          Accept: 'application/json',
-        },
+async getConfig() {
+  const response = await fetch(
+    `https://admin.da.live/source/${this.org}/${this.repo}/${CATALOGUE_PATH}`,
+    {
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        Accept: 'application/json',
       },
-    );
+    },
+  );
 
-    if (response.status === 404) return null;
-
-    if (!response.ok) {
-      throw new Error(`Could not load catalogue (${response.status})`);
-    }
-
-    return response.json();
+  if (!response.ok) {
+    throw new Error(`Could not load catalogue (${response.status})`);
   }
+
+  return response.json();
+}
 
   async loadNamespaces() {
-    try {
-      const config = await this.getConfig();
-      this.namespaces = config?.data || [];
-      this.status = config
-        ? `${this.namespaces.length} namespace(s) loaded.`
-        : 'No namespaces yet. Create your first one.';
-    } catch (error) {
-      this.status = error.message;
-    }
+  try {
+    const catalogue = await this.getConfig();
+    this.namespaces = catalogue.data || [];
+    this.status = `${this.namespaces.length} namespace(s) loaded.`;
+  } catch (error) {
+    this.status = error.message;
   }
+}
 
   async saveNamespace(event) {
     event.preventDefault();
