@@ -1,19 +1,56 @@
 
 :host {
   display: block;
-  max-width: 1000px;
+  max-width: 900px;
   margin: 24px auto;
   padding: 0 20px;
-  font-family: Arial, sans-serif;
   color: #252525;
+  font-family: Arial, sans-serif;
 }
 
 h1 {
   font-size: 28px;
-  margin-bottom: 12px;
 }
 
-p {
-  font-size: 14px;
-  line-height: 1.6;
+form {
+  display: grid;
+  gap: 10px;
+  max-width: 480px;
+  margin: 24px 0;
+}
+
+input {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+button {
+  width: fit-content;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 4px;
+  background: #2457a7;
+  color: white;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+ul {
+  padding-left: 20px;
+}
+
+li {
+  margin: 12px 0;
+}
+
+li span {
+  display: block;
+  color: #666;
+  margin-top: 4px;
 }
