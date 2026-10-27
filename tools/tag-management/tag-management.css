@@ -1,0 +1,19 @@
+
+:host {
+  display: block;
+  max-width: 1000px;
+  margin: 24px auto;
+  padding: 0 20px;
+  font-family: Arial, sans-serif;
+  color: #252525;
+}
+
+h1 {
+  font-size: 28px;
+  margin-bottom: 12px;
+}
+
+p {
+  font-size: 14px;
+  line-height: 1.6;
+}
