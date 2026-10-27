@@ -2,7 +2,7 @@
 import DA_SDK from 'https://da.live/nx/utils/sdk.js';
 import { LitElement, html } from 'da-lit';
 
-const CONFIG_PATH = 'config/tag-catalogue.json';
+const CATALOGUE_PATH = 'config/tag-catalogue.json';
 
 class TagManagement extends LitElement {
   static properties = {
@@ -92,7 +92,7 @@ async getConfig() {
         { namespace: name, description },
       ];
 
-      const config = {
+      const updatedCatalogue = {
   ...existing,
   ':sheetname': existing?.[':sheetname'] || 'tag-catalogue',
   ':type': existing?.[':type'] || 'sheet',
@@ -100,24 +100,29 @@ async getConfig() {
   data: updatedRows,
 };
 
-      const formData = new FormData();
-      formData.append('config', JSON.stringify(config));
+const formData = new FormData();
+formData.append(
+  'data',
+  new Blob([JSON.stringify(updatedCatalogue, null, 2)], {
+    type: 'application/json',
+  }),
+  'tag-catalogue.json',
+);
 
-      const response = await fetch(
-        `https://admin.da.live/config/pankaj2186/refdemo-da/${CONFIG_PATH}`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.token}`,
-          },
-          body: formData,
-        },
-      );
+const response = await fetch(
+  `https://admin.da.live/source/${this.org}/${this.repo}/${CATALOGUE_PATH}`,
+  {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${this.token}`,
+    },
+    body: formData,
+  },
+);
 
-      if (!response.ok) {
-        throw new Error(`Save failed (${response.status})`);
-      }
-
+if (!response.ok) {
+  throw new Error(`Save failed (${response.status}): ${responseText || 'No response details'}`); 
+}
       this.namespaces = updatedRows;
       this.namespaceName = '';
       this.description = '';
