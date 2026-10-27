@@ -14,6 +14,10 @@ class TagManagement extends LitElement {
     description: { state: true },
     status: { state: true },
     busy: { state: true },
+    selectedNamespace: { state: true },
+    selectedParent: { state: true },
+    tagName: { state: true },
+    tagDescription: { state: true },
   };
 
   constructor() {
@@ -23,6 +27,10 @@ class TagManagement extends LitElement {
     this.description = '';
     this.status = 'Loading namespaces...';
     this.busy = false;
+    this.selectedNamespace = '';
+    this.selectedParent = '';
+    this.tagName = '';
+    this.tagDescription = '';
   }
 
   async connectedCallback() {
@@ -134,6 +142,117 @@ if (!response.ok) {
     }
   }
 
+  async createTag(event) {
+  event.preventDefault();
+
+  const namespace = this.selectedNamespace;
+  const tag = this.tagName.trim().toLowerCase();
+  const parent = this.selectedParent;
+  const tagDescription = this.tagDescription.trim();
+
+  if (!namespace) {
+    this.status = 'Please select a namespace.';
+    return;
+  }
+
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tag)) {
+    this.status =
+      'Use lowercase letters, numbers, and hyphens only.';
+    return;
+  }
+
+  this.busy = true;
+  this.status = 'Saving tag...';
+
+  try {
+    const existing = await this.getConfig();
+    const rows = existing?.data || [];
+
+    const duplicate = rows.some(
+      (row) =>
+        row.namespace === namespace &&
+        row.tag === tag &&
+        (row.parent || '') === parent,
+    );
+
+    if (duplicate) {
+      throw new Error(
+        `Tag "${tag}" already exists under this parent.`,
+      );
+    }
+
+    if (parent) {
+      const parentExists = rows.some(
+        (row) =>
+          row.namespace === namespace &&
+          row.tag === parent,
+      );
+
+      if (!parentExists) {
+        throw new Error('The selected parent tag does not exist.');
+      }
+    }
+
+    const updatedRows = [
+      ...rows,
+      {
+        namespace,
+        description: tagDescription,
+        tag,
+        parent,
+      },
+    ];
+
+    const updatedCatalogue = {
+      ...existing,
+      ':sheetname': existing?.[':sheetname'] || 'tag-catalogue',
+      ':type': existing?.[':type'] || 'sheet',
+      total: updatedRows.length,
+      data: updatedRows,
+    };
+
+    const formData = new FormData();
+    formData.append(
+      'data',
+      new Blob(
+        [JSON.stringify(updatedCatalogue, null, 2)],
+        { type: 'application/json' },
+      ),
+      'tag-catalogue.json',
+    );
+
+    const response = await fetch(
+      `https://admin.da.live/source/${this.org}/${this.repo}/${CATALOGUE_PATH}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+        },
+        body: formData,
+      },
+    );
+
+    const responseText = await response.text();
+
+    if (!response.ok) {
+      throw new Error(
+        `Save failed (${response.status}): ${responseText}`,
+      );
+    }
+
+    this.tagName = '';
+    this.tagDescription = '';
+    this.selectedParent = '';
+    this.status = `Tag "${tag}" saved under "${parent || namespace}".`;
+
+    await this.loadNamespaces();
+  } catch (error) {
+    this.status = error.message;
+  } finally {
+    this.busy = false;
+  }
+}
+
   render() {
     return html`
       <main>
@@ -187,6 +306,90 @@ if (!response.ok) {
               </ul>
             `
           : html`<p>No namespaces created yet.</p>`}
+
+          <h2>Create tag</h2>
+
+<form @submit=${this.createTag}>
+  <label for="tag-namespace">Select namespace</label>
+
+  <select
+    id="tag-namespace"
+    required
+    .value=${this.selectedNamespace}
+    @change=${(event) => {
+      this.selectedNamespace = event.target.value;
+      this.selectedParent = '';
+    }}
+  >
+    <option value="">Choose a namespace</option>
+
+    ${this.namespaces
+      .filter((item) => item.namespace && !item.tag)
+      .map(
+        (item) => html`
+          <option value=${item.namespace}>
+            ${item.namespace}
+          </option>
+        `,
+      )}
+  </select>
+
+  <label for="tag-parent">Parent tag</label>
+
+  <select
+    id="tag-parent"
+    .value=${this.selectedParent}
+    @change=${(event) => {
+      this.selectedParent = event.target.value;
+    }}
+  >
+    <option value="">None — top-level tag</option>
+
+    ${this.namespaces
+      .filter(
+        (item) =>
+          item.namespace === this.selectedNamespace &&
+          item.tag,
+      )
+      .map(
+        (item) => html`
+          <option value=${item.tag}>${item.tag}</option>
+        `,
+      )}
+  </select>
+
+  <label for="tag-name">Tag name</label>
+
+  <input
+    id="tag-name"
+    required
+    maxlength="60"
+    placeholder="e.g. software"
+    .value=${this.tagName}
+    @input=${(event) => {
+      this.tagName = event.target.value;
+    }}
+  />
+
+  <label for="tag-description">Tag description</label>
+
+  <input
+    id="tag-description"
+    maxlength="200"
+    placeholder="Describe this tag"
+    .value=${this.tagDescription}
+    @input=${(event) => {
+      this.tagDescription = event.target.value;
+    }}
+  />
+
+  <button
+    type="submit"
+    ?disabled=${this.busy || !this.selectedNamespace}
+  >
+    ${this.busy ? 'Saving...' : 'Create tag'}
+  </button>
+</form>
       </main>
     `;
   }
