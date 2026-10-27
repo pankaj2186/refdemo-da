@@ -114,3 +114,24 @@ export async function savePageTags(path, token, tags) {
   }
   return saveDoc(path, token, doc);
 }
+
+
+export async function loadTagCatalogue(org, repo, token) {
+  const url = `https://admin.da.live/source/${org}/${repo}/config/tag-catalogue.json`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Could not load tag catalogue (${response.status}).`);
+  }
+
+  const catalogue = await response.json();
+  return catalogue.data || [];
+}
+
