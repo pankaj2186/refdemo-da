@@ -108,7 +108,7 @@ class TagManagement extends LitElement {
       formData.append('config', JSON.stringify(config));
 
       const response = await fetch(
-        `https://content.da.live/config/pankaj2186/refdemo-da/${CONFIG_PATH}`,
+        `https://admin.da.live/config/pankaj2186/refdemo-da/${CONFIG_PATH}`,
         {
           method: 'POST',
           headers: {
