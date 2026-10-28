@@ -1,6 +1,6 @@
 
 import DA_SDK from 'https://da.live/nx/utils/sdk.js';
-import { LitElement, html } from 'da-lit';
+import { LitElement, html, nothing } from 'da-lit';
 
 const CATALOGUE_PATH = 'config/tag-catalogue.json';
 
