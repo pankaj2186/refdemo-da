@@ -361,6 +361,10 @@ getTagKey(namespace, parentPath, tag) {
 getAllTags() {
   return this.namespaces || [];
 }
+
+getTagName(tag) {
+  return tag.path.split('/').filter(Boolean).pop() || tag.title;
+}
   
 render() {
   const namespaceRows = this.getNamespaceRows();
@@ -601,12 +605,12 @@ render() {
 
                   <button
                     class="row-select"
-                    @click=${() => this.selectTag(row.tag, depth)}
+                    @click=${() => this.selectTag(this.getTagName(row), depth)}
                   >
-                    ${row.tag}
-                    ${this.getTagChildren(namespace, row.tag).length
-                      ? html`<span>›</span>`
-                      : nothing}
+                    ${this.getTagName(row)}
+${this.getTagChildren(row.path).length
+  ? html`<span>›</span>`
+  : nothing}
                   </button>
                 </div>
               `;
