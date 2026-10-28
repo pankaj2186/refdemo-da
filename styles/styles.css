@@ -997,7 +997,8 @@ main .section {
 
 /* Card headings */
 .cards.block .cards-card-body h3 ,
-.cards-card-body h2{
+.cards-card-body h2,
+.columns.block .columns-row h3,{
   color: var(--brand-theme-color);
 }
 
