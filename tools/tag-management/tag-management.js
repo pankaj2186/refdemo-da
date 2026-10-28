@@ -287,19 +287,18 @@ if (!response.ok) {
   }
 }
 
-
-  
 getNamespaceRows() {
   const roots = new Map();
 
   (this.namespaces || []).forEach((tag) => {
-    const root = tag.path.split('/')[0];
+    const parts = tag.path.split('/').filter(Boolean);
+    const namespace = parts[0];
 
-    if (root && !roots.has(root)) {
-      roots.set(root, {
-        tagId: root,
-        title: root,
-        path: root,
+    if (namespace && !roots.has(namespace)) {
+      roots.set(namespace, {
+        namespace,
+        title: namespace,
+        path: namespace,
       });
     }
   });
