@@ -3,6 +3,9 @@ import DA_SDK from 'https://da.live/nx/utils/sdk.js';
 // eslint-disable-next-line import/no-unresolved
 import { LitElement, html, nothing } from 'da-lit';
 import loadStyle from '../../scripts/utils/styles.js';
+// da.live Super Lite components (sl-button) and the Spectrum 2 tokens they share
+// eslint-disable-next-line import/no-unresolved
+import 'https://da.live/nx/public/sl/components.js';
 import {
   ID_PATTERN,
   addTag,
@@ -38,6 +41,7 @@ class TagManagement extends LitElement {
     status: { state: true },
     busy: { state: true },
     menuOpen: { state: true },
+    loading: { state: true },
   };
 
   constructor() {
@@ -50,12 +54,23 @@ class TagManagement extends LitElement {
     this.status = 'Loading tags...';
     this.busy = false;
     this.menuOpen = false;
+    this.loading = true;
+    this.closeMenuOutside = (e) => {
+      const menu = this.shadowRoot.querySelector('.create-menu');
+      if (this.menuOpen && !e.composedPath().includes(menu)) this.menuOpen = false;
+    };
   }
 
   connectedCallback() {
     super.connectedCallback();
     this.shadowRoot.adoptedStyleSheets = [styles];
+    document.addEventListener('pointerdown', this.closeMenuOutside);
     this.load();
+  }
+
+  disconnectedCallback() {
+    document.removeEventListener('pointerdown', this.closeMenuOutside);
+    super.disconnectedCallback();
   }
 
   get catalogueUrl() {
@@ -95,6 +110,8 @@ class TagManagement extends LitElement {
       this.status = `${this.tree.size} tag(s) loaded.`;
     } catch (error) {
       this.status = error.message;
+    } finally {
+      this.loading = false;
     }
   }
 
@@ -225,8 +242,8 @@ class TagManagement extends LitElement {
   }
 
   async deletePending() {
-    this.shadowRoot.querySelector('dialog').close();
     const paths = this.pendingDelete;
+    this.shadowRoot.querySelector('dialog').close();
     const deleted = await this.mutate((rows) => removeTags(rows, paths), 'Deleting...');
     if (!deleted) return;
     const removed = paths.find((path) => isWithin(this.activePath, path));
@@ -235,36 +252,20 @@ class TagManagement extends LitElement {
     this.status = `Deleted ${paths.length} item(s) and their descendants.`;
   }
 
-  renderToolbar() {
-    const count = this.checked.length;
-    if (count) {
-      return html`
-        <div class="toolbar actions">
-          <button class="action" ?disabled=${this.busy || count > 1} @click=${() => this.openCreate('tag')}>+ Create Tag</button>
-          <button class="action" ?disabled=${this.busy || count !== 1} @click=${this.openEdit}>Edit</button>
-          <button class="action" ?disabled=${this.busy} @click=${this.confirmDelete}>Delete</button>
-          <span class="spacer"></span>
-          <span>${count} selected</span>
-          <button class="quiet" @click=${() => { this.checked = []; }}>Clear selection</button>
-        </div>`;
-    }
+  renderHeader() {
     return html`
-      <div class="toolbar">
+      <header class="page-header">
         <h1>Tag Management</h1>
-        <span class="spacer"></span>
-        <button class="quiet" @click=${this.selectAll}>Select All</button>
         <div
           class="create-menu"
-          @focusout=${(e) => { if (!e.currentTarget.contains(e.relatedTarget)) this.menuOpen = false; }}
           @keydown=${(e) => { if (e.key === 'Escape') this.menuOpen = false; }}
         >
-          <button
-            class="primary"
+          <sl-button
             aria-haspopup="true"
             aria-expanded=${this.menuOpen}
             ?disabled=${this.busy}
             @click=${() => { this.menuOpen = !this.menuOpen; }}
-          >Create ▾</button>
+          >Create ▾</sl-button>
           ${this.menuOpen ? html`
             <div class="create-dropdown">
               <button @click=${() => this.openCreate('namespace')}>Create a namespace</button>
@@ -275,7 +276,41 @@ class TagManagement extends LitElement {
               >Create a tag</button>
             </div>` : nothing}
         </div>
+      </header>`;
+  }
+
+  renderToolbar() {
+    const count = this.checked.length;
+    if (count) {
+      return html`
+        <div class="toolbar has-selection">
+          <span class="count">${count} selected</span>
+          <button class="action" ?disabled=${this.busy || count > 1} @click=${() => this.openCreate('tag')}>Create tag</button>
+          <button class="action" ?disabled=${this.busy || count !== 1} @click=${this.openEdit}>Edit</button>
+          <button class="action negative" ?disabled=${this.busy} @click=${this.confirmDelete}>Delete</button>
+          <span class="spacer"></span>
+          <button class="action" @click=${() => { this.checked = []; }}>Clear selection</button>
+        </div>`;
+    }
+    const crumbs = this.activePath.split('/').filter(Boolean)
+      .map((id, index, ids) => ({ id, path: ids.slice(0, index + 1).join('/') }));
+    return html`
+      <div class="toolbar">
+        <nav class="breadcrumbs" aria-label="Current location">
+          <button class="action" @click=${() => { this.activePath = ''; }}>All namespaces</button>
+          ${crumbs.map(({ id, path }) => html`
+            <span aria-hidden="true">/</span>
+            <button class="action" aria-current=${path === this.activePath ? 'page' : nothing} @click=${() => { this.activePath = path; }}>${this.tree.get(path)?.title ?? id}</button>`)}
+        </nav>
+        <span class="spacer"></span>
+        <button class="action" @click=${this.selectAll}>Select all</button>
       </div>`;
+  }
+
+  renderColumnBody(tags) {
+    if (tags.length) return html`<ul>${tags.map((tag) => this.renderRow(tag))}</ul>`;
+    if (this.loading) return nothing;
+    return html`<p class="empty">No tags yet. Use Create to add a namespace.</p>`;
   }
 
   renderRow(tag) {
@@ -315,13 +350,12 @@ class TagManagement extends LitElement {
 
   renderBrowser() {
     return html`
+      ${this.renderHeader()}
       ${this.renderToolbar()}
       <div class="browser">
         ${this.columns.map(({ parent, tags }) => html`
           <section class="column" aria-label=${parent ? `Tags in /${parent}` : 'Namespaces'}>
-            ${tags.length
-    ? html`<ul>${tags.map((tag) => this.renderRow(tag))}</ul>`
-    : html`<p class="empty">No tags yet. Use Create to add a namespace.</p>`}
+            ${this.renderColumnBody(tags)}
           </section>`)}
         ${this.renderDetails()}
       </div>
@@ -330,8 +364,8 @@ class TagManagement extends LitElement {
         <p>These items and everything under them will be deleted:</p>
         <ul class="paths">${this.pendingDelete.map((path) => html`<li>/${path}</li>`)}</ul>
         <div class="dialog-actions">
-          <button class="secondary" @click=${() => this.shadowRoot.querySelector('dialog').close()}>Cancel</button>
-          <button class="danger" @click=${this.deletePending}>Delete</button>
+          <sl-button class="primary outline" @click=${() => this.shadowRoot.querySelector('dialog').close()}>Cancel</sl-button>
+          <sl-button class="negative" @click=${this.deletePending}>Delete</sl-button>
         </div>
       </dialog>`;
   }
@@ -343,12 +377,14 @@ class TagManagement extends LitElement {
     const noun = parent ? 'Tag' : 'Namespace';
     return html`
       <form class="tag-form" @submit=${this.submitForm}>
-        <div class="toolbar form-header">
+        <header class="page-header">
           <h1>${mode === 'create' ? 'Create' : 'Edit'} ${noun}</h1>
-          <span class="spacer"></span>
-          <button type="button" class="secondary" @click=${() => { this.form = null; }}>Cancel</button>
-          <button type="submit" class="primary" ?disabled=${this.busy}>Submit</button>
-        </div>
+          <div class="header-actions">
+            <sl-button class="primary outline" @click=${() => { this.form = null; }}>Cancel</sl-button>
+            <!-- sl-button's own button lives in its shadow root, so it cannot submit this form -->
+            <sl-button ?disabled=${this.busy} @click=${(e) => e.target.closest('form').requestSubmit()}>Save</sl-button>
+          </div>
+        </header>
         <div class="fields">
           <label for="tag-title">Title *</label>
           <input id="tag-title" required .value=${title} @input=${(e) => this.updateForm('title', e.target.value)} />
