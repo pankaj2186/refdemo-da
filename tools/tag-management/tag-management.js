@@ -91,193 +91,52 @@ async loadNamespaces() {
   }
 }
 
-  async saveNamespace(event) {
-    event.preventDefault();
-
-    const name = this.namespaceName.trim().toLowerCase();
-    const description = this.description.trim();
-
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
-      this.status =
-        'Use lowercase letters, numbers, and hyphens only.';
-      return;
-    }
-
-    if (this.namespaces.some((item) => item.namespace === name)) {
-      this.status = `Namespace "${name}" already exists.`;
-      return;
-    }
-
-    this.busy = true;
-    this.status = 'Saving namespace...';
-
-    try {
-      // Reload before saving to reduce accidental overwrites.
-      const existing = await this.getConfig();
-      const rows = existing?.data || [];
-
-      if (rows.some((item) => item.namespace === name)) {
-        throw new Error(`Namespace "${name}" already exists.`);
-      }
-
-      const updatedRows = [
-        ...rows,
-        { namespace: name, description },
-      ];
-
-      const updatedCatalogue = {
-  ...existing,
-  ':sheetname': existing?.[':sheetname'] || 'tag-catalogue',
-  ':type': existing?.[':type'] || 'sheet',
-  total: updatedRows.length,
-  data: updatedRows,
-};
-
-const formData = new FormData();
-formData.append(
-  'data',
-  new Blob([JSON.stringify(updatedCatalogue, null, 2)], {
-    type: 'application/json',
-  }),
-  'tag-catalogue.json',
-);
-
-const response = await fetch(
-  `https://admin.da.live/source/${this.org}/${this.repo}/${CATALOGUE_PATH}`,
-  {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${this.token}`,
-    },
-    body: formData,
-  },
-);
-
-const responseText = await response.text();
-
-if (!response.ok) {
-  throw new Error(
-    `Save failed (${response.status}): ${responseText || 'No response details'}`,
-  );
-}
-      this.namespaces = updatedRows;
-      this.namespaceName = '';
-      this.description = '';
-      this.status = `Namespace "${name}" saved successfully.`;
-      return true;
-    } catch (error) {
-      this.status = error.message;
-      return false;
-    } finally {
-      this.busy = false;
-    }
-  }
-
-  async createTag(event) {
+  
+async saveNamespace(event) {
   event.preventDefault();
 
-  const namespace = this.selectedNamespace;
-  const tag = this.tagName.trim().toLowerCase();
-  const parent = this.selectedParent;
-  const tagDescription = this.tagDescription.trim();
+  const name = this.namespaceName.trim().toLowerCase();
+  const title = name
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 
-  if (!namespace) {
-    this.status = 'Please select a namespace.';
-    return false;
-  }
-
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tag)) {
-    this.status =
-      'Use lowercase letters, numbers, and hyphens only.';
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
+    this.status = 'Use lowercase letters, numbers, and hyphens only.';
     return false;
   }
 
   this.busy = true;
-  this.status = 'Saving tag...';
+  this.status = 'Saving namespace...';
 
   try {
     const existing = await this.getConfig();
-    const rows = existing?.data || [];
+    const rows = existing.data || [];
 
-    const duplicate = rows.some(
-      (row) =>
-        row.namespace === namespace &&
-        row.tag === tag &&
-        (row.parent || '') === parent,
-    );
-
-    if (duplicate) {
-      throw new Error(
-        `Tag "${tag}" already exists under this parent.`,
-      );
+    if (rows.some((row) => row.Path === name)) {
+      throw new Error(`Namespace "${name}" already exists.`);
     }
-
-    if (parent) {
-      const parentExists = rows.some(
-        (row) =>
-          row.namespace === namespace &&
-          row.tag === parent,
-      );
-
-      if (!parentExists) {
-        throw new Error('The selected parent tag does not exist.');
-      }
-    }
-
-    const updatedRows = [
-      ...rows,
-      {
-        namespace,
-        description: tagDescription,
-        tag,
-        parent,
-      },
-    ];
 
     const updatedCatalogue = {
       ...existing,
-      ':sheetname': existing?.[':sheetname'] || 'tag-catalogue',
-      ':type': existing?.[':type'] || 'sheet',
-      total: updatedRows.length,
-      data: updatedRows,
+      total: rows.length + 1,
+      data: [
+        ...rows,
+        {
+          'Tag ID': name,
+          Title: title,
+          Path: name,
+        },
+      ],
     };
 
-    const formData = new FormData();
-    formData.append(
-      'data',
-      new Blob(
-        [JSON.stringify(updatedCatalogue, null, 2)],
-        { type: 'application/json' },
-      ),
-      'tag-catalogue.json',
-    );
-
-    const response = await fetch(
-      `https://admin.da.live/source/${this.org}/${this.repo}/${CATALOGUE_PATH}`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-        },
-        body: formData,
-      },
-    );
-
-    const responseText = await response.text();
-
-    if (!response.ok) {
-      throw new Error(
-        `Save failed (${response.status}): ${responseText}`,
-      );
-    }
-
-     this.tagName = '';
-    this.tagDescription = '';
-    this.selectedParent = '';
-
+    await this.saveCatalogue(updatedCatalogue);
     await this.loadNamespaces();
 
-    this.status = `Tag "${tag}" saved successfully.`;
+    this.namespaceName = '';
+    this.description = '';
+    this.status = `Namespace "${title}" saved successfully.`;
+
     return true;
   } catch (error) {
     this.status = error.message;
@@ -286,6 +145,76 @@ if (!response.ok) {
     this.busy = false;
   }
 }
+
+
+  
+async createTag(event) {
+  event.preventDefault();
+
+  const namespace = this.selectedNamespace;
+  const tag = this.tagName.trim().toLowerCase();
+  const parent = this.selectedParent || namespace;
+
+  if (!namespace) {
+    this.status = 'Please select a namespace.';
+    return false;
+  }
+
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tag)) {
+    this.status = 'Use lowercase letters, numbers, and hyphens only.';
+    return false;
+  }
+
+  this.busy = true;
+  this.status = 'Saving tag...';
+
+  try {
+    const existing = await this.getConfig();
+    const rows = existing.data || [];
+    const fullPath = `${parent}/${tag}`;
+
+    if (rows.some((row) => row.Path === fullPath)) {
+      throw new Error(`Tag "${tag}" already exists at this location.`);
+    }
+
+    if (!rows.some((row) => row.Path === parent)) {
+      throw new Error('The selected parent path does not exist.');
+    }
+
+    const title = tag
+      .split('-')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+
+    const updatedCatalogue = {
+      ...existing,
+      total: rows.length + 1,
+      data: [
+        ...rows,
+        {
+          'Tag ID': tag,
+          Title: title,
+          Path: fullPath,
+        },
+      ],
+    };
+
+    await this.saveCatalogue(updatedCatalogue);
+    await this.loadNamespaces();
+
+    this.tagName = '';
+    this.tagDescription = '';
+    this.status = `Tag "${title}" saved successfully.`;
+
+    return true;
+  } catch (error) {
+    this.status = error.message;
+    return false;
+  } finally {
+    this.busy = false;
+  }
+}
+
 
 getNamespaceRows() {
   const roots = new Map();
@@ -365,6 +294,37 @@ getAllTags() {
 getTagName(tag) {
   return tag.path.split('/').filter(Boolean).pop() || tag.title;
 }
+
+
+async saveCatalogue(updatedCatalogue) {
+  const formData = new FormData();
+
+  formData.append(
+    'data',
+    new Blob(
+      [JSON.stringify(updatedCatalogue, null, 2)],
+      { type: 'application/json' },
+    ),
+    'tag-catalogue.json',
+  );
+
+  const response = await fetch(
+    `https://admin.da.live/source/${this.org}/${this.repo}/${CATALOGUE_PATH}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: formData,
+    },
+  );
+
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`Save failed (${response.status}): ${details}`);
+  }
+}
+
   
 render() {
   const namespaceRows = this.getNamespaceRows();
@@ -508,8 +468,12 @@ render() {
                         }}
                       >
                         <option value="">None — top-level tag</option>
-                        ${this.getAllTags(this.selectedNamespace || '').map((row) => html`
-  <option value=${row.tag}>${row.tag}</option>
+${this.getAllTags()
+  .filter((row) => row.path.startsWith(`${this.selectedNamespace}/`))
+  .map((row) => html`
+    <option value=${row.path}>
+      ${row.title} (${row.path})
+    </option>
 `)}
                       </select>
 
