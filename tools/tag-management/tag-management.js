@@ -306,13 +306,20 @@ getNamespaceRows() {
   return [...roots.values()];
 }
 
+
 getTagChildren(parentPath) {
+  const parent = parentPath.split('/').filter(Boolean);
+
   return (this.namespaces || []).filter((tag) => {
-    const parts = tag.path.split('/');
-    return parts.length > 1
-      && parts.slice(0, -1).join('/') === parentPath;
+    const parts = tag.path.split('/').filter(Boolean);
+
+    return (
+      parts.length === parent.length + 1 &&
+      parts.slice(0, -1).join('/') === parent.join('/')
+    );
   });
 }
+
 
 
 selectNamespace(namespace) {
@@ -366,16 +373,16 @@ render() {
     columns.push({
       title: `${namespace} tags`,
       parentPath: [],
-      rows: this.getTagChildren(namespace, ''),
+      rows: this.getTagChildren(namespace),
     });
 
     tagPath.forEach((tag, depth) => {
-      const parentPath = tagPath.slice(0, depth + 1);
+      const parentPath = `${namespace}/${tagPath.slice(0, depth + 1).join('/')}`;
 
       columns.push({
         title: tag,
         parentPath,
-        rows: this.getTagChildren(namespace, tag),
+        rows: this.getTagChildren(parentPath),
       });
     });
   }
