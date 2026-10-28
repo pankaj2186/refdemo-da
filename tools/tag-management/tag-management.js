@@ -24,6 +24,12 @@ checkedNamespaces: { state: true },
 checkedTags: { state: true },
 showCreateMenu: { state: true },
 formMode: { state: true },
+namespaceId: { state: true },
+tagId: { state: true },
+renameTarget: { state: true },
+renameName: { state: true },
+renameId: { state: true },
+renameDescription: { state: true },
   };
 
   constructor() {
@@ -43,6 +49,12 @@ this.checkedNamespaces = [];
 this.checkedTags = [];
 this.showCreateMenu = false;
 this.formMode = '';
+this.namespaceId = '';
+this.tagId = '';
+this.renameTarget = null;
+this.renameName = '';
+this.renameId = '';
+this.renameDescription = '';
   }
 
   async connectedCallback() {
@@ -90,19 +102,17 @@ async loadNamespaces() {
     this.status = error.message;
   }
 }
+ 
 
-  
 async saveNamespace(event) {
   event.preventDefault();
 
-  const name = this.namespaceName.trim().toLowerCase();
-  const title = name
-    .split('-')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+  const id = this.namespaceId.trim().toLowerCase();
+  const title = this.namespaceName.trim();
+  const description = this.description.trim();
 
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
-    this.status = 'Use lowercase letters, numbers, and hyphens only.';
+  if (!title || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
+    this.status = 'Enter a namespace name and a valid ID using lowercase letters, numbers, and hyphens.';
     return false;
   }
 
@@ -113,8 +123,10 @@ async saveNamespace(event) {
     const existing = await this.getConfig();
     const rows = existing.data || [];
 
-    if (rows.some((row) => row.Path === name)) {
-      throw new Error(`Namespace "${name}" already exists.`);
+    if (rows.some((row) =>
+      row.Path === id || row['Tag ID'] === id
+    )) {
+      throw new Error(`Namespace "${id}" already exists.`);
     }
 
     const updatedCatalogue = {
@@ -123,9 +135,10 @@ async saveNamespace(event) {
       data: [
         ...rows,
         {
-          'Tag ID': name,
+          'Tag ID': id,
           Title: title,
-          Path: name,
+          Path: id,
+          Description: description,
         },
       ],
     };
@@ -134,6 +147,7 @@ async saveNamespace(event) {
     await this.loadNamespaces();
 
     this.namespaceName = '';
+    this.namespaceId = '';
     this.description = '';
     this.status = `Namespace "${title}" saved successfully.`;
 
@@ -146,22 +160,24 @@ async saveNamespace(event) {
   }
 }
 
-
-  
 async createTag(event) {
   event.preventDefault();
 
-  const namespace = this.selectedNamespace;
-  const tag = this.tagName.trim().toLowerCase();
-  const parent = this.selectedParent || namespace;
+  const id = this.tagId.trim().toLowerCase();
+  const title = this.tagName.trim();
+  const description = this.tagDescription.trim();
+  const parent = this.selectedParent;
 
-  if (!namespace) {
-    this.status = 'Please select a namespace.';
+  if (!parent) {
+    console.log('activeNamespace:', this.activeNamespace);
+  console.log('activeTagPath:', this.activeTagPath);
+  console.log('selectedParent:', this.selectedParent);
+    this.status = 'Select a namespace or tag before creating a tag.';
     return false;
   }
 
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tag)) {
-    this.status = 'Use lowercase letters, numbers, and hyphens only.';
+  if (!title || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
+    this.status = 'Enter a name and a valid ID using lowercase letters, numbers, and hyphens.';
     return false;
   }
 
@@ -171,20 +187,15 @@ async createTag(event) {
   try {
     const existing = await this.getConfig();
     const rows = existing.data || [];
-    const fullPath = `${parent}/${tag}`;
-
-    if (rows.some((row) => row.Path === fullPath)) {
-      throw new Error(`Tag "${tag}" already exists at this location.`);
-    }
+    const fullPath = `${parent}/${id}`;
 
     if (!rows.some((row) => row.Path === parent)) {
-      throw new Error('The selected parent path does not exist.');
+      throw new Error(`Parent "${parent}" was not found in the catalogue.`);
     }
 
-    const title = tag
-      .split('-')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+    if (rows.some((row) => row.Path === fullPath)) {
+      throw new Error(`Tag "${id}" already exists under this parent.`);
+    }
 
     const updatedCatalogue = {
       ...existing,
@@ -192,9 +203,10 @@ async createTag(event) {
       data: [
         ...rows,
         {
-          'Tag ID': tag,
+          'Tag ID': id,
           Title: title,
           Path: fullPath,
+          Description: description,
         },
       ],
     };
@@ -203,6 +215,7 @@ async createTag(event) {
     await this.loadNamespaces();
 
     this.tagName = '';
+    this.tagId = '';
     this.tagDescription = '';
     this.status = `Tag "${title}" saved successfully.`;
 
@@ -215,11 +228,14 @@ async createTag(event) {
   }
 }
 
-
 getNamespaceRows() {
   const roots = new Map();
 
   (this.namespaces || []).forEach((tag) => {
+    if (!tag || typeof tag.path !== 'string' || !tag.path.trim()) {
+      return;
+    }
+
     const parts = tag.path.split('/').filter(Boolean);
     const namespace = parts[0];
 
@@ -234,7 +250,6 @@ getNamespaceRows() {
 
   return [...roots.values()];
 }
-
 
 getTagChildren(parentPath) {
   const parent = parentPath.split('/').filter(Boolean);
@@ -253,7 +268,9 @@ getTagChildren(parentPath) {
 
 selectNamespace(namespace) {
   this.activeNamespace = namespace;
+  this.selectedNamespace = namespace;
   this.activeTagPath = [];
+console.log('Selected namespace:', namespace);
 }
 
 selectTag(tag, depth) {
@@ -261,40 +278,281 @@ selectTag(tag, depth) {
     ...(this.activeTagPath || []).slice(0, depth),
     tag,
   ];
+
+  this.selectedParent = [
+    this.activeNamespace,
+    ...this.activeTagPath,
+  ].filter(Boolean).join('/');
+
+  this.selectedNamespace = this.activeNamespace;
 }
 
 getTagKey(namespace, parentPath, tag) {
   return `${namespace}:${[...parentPath, tag].join('/')}`;
 }
 
-// async submitNamespace(event) {
-//   await this.saveNamespace(event);
-
-//   if (!this.busy && !this.status?.startsWith('Namespace "')) {
-//     return;
-//   }
-
-//   if (!this.busy && this.status?.endsWith('saved successfully.')) {
-//     this.formMode = '';
-//   }
-// }
-
-// async submitTag(event) {
-//   await this.createTag(event);
-
-//   if (!this.busy && this.status?.startsWith('Tag "')) {
-//     this.formMode = '';
-//   }
-// }
-
-getAllTags() {
-  return this.namespaces || [];
-}
-
 getTagName(tag) {
   return tag.path.split('/').filter(Boolean).pop() || tag.title;
 }
 
+async deleteSelected() {
+  const selectedNamespaces = this.checkedNamespaces || [];
+  const selectedTags = this.checkedTags || [];
+
+  if (
+    selectedNamespaces.length === 0 &&
+    selectedTags.length === 0
+  ) {
+    this.status = 'Select at least one namespace or tag to delete.';
+    return;
+  }
+
+  // Convert checked tag keys into their full paths.
+  // Example: products:products/shoes/running
+  // becomes: products/shoes/running
+  const selectedTagPaths = selectedTags.map((key) => {
+    const separatorIndex = key.indexOf(':');
+    return key.slice(separatorIndex + 1);
+  });
+
+  const selectedPaths = [
+    ...selectedNamespaces,
+    ...selectedTagPaths,
+  ];
+
+  const uniquePaths = [...new Set(selectedPaths)];
+
+  const confirmed = window.confirm(
+    `Are you sure you want to delete ${uniquePaths.length} selected item(s) and all their descendants?`
+  );
+
+  if (!confirmed) return;
+
+  this.busy = true;
+  this.status = 'Deleting selected items...';
+
+  try {
+    const existing = await this.getConfig();
+    const rows = existing.data || [];
+
+    // Remove redundant selections when a parent is already selected.
+    const pathsToDelete = uniquePaths.filter(
+      (path) =>
+        !uniquePaths.some(
+          (otherPath) =>
+            otherPath !== path &&
+            path.startsWith(`${otherPath}/`)
+        )
+    );
+
+    // Remove each selected path and its descendants.
+    const remainingRows = rows.filter((row) => {
+      const path = String(row.Path || '')
+        .trim()
+        .replace(/^\/|\/$/g, '');
+
+      return !pathsToDelete.some(
+        (deletePath) =>
+          path === deletePath ||
+          path.startsWith(`${deletePath}/`)
+      );
+    });
+
+    const deletedCount = rows.length - remainingRows.length;
+
+    if (deletedCount === 0) {
+      throw new Error('No matching catalogue entries were found.');
+    }
+
+    const updatedCatalogue = {
+      ...existing,
+      total: remainingRows.length,
+      data: remainingRows,
+    };
+
+    await this.saveCatalogue(updatedCatalogue);
+    await this.loadNamespaces();
+
+    // Clear selections after a successful deletion.
+    this.checkedNamespaces = [];
+    this.checkedTags = [];
+
+    // Reset the navigation to avoid pointing at deleted tags.
+    if (
+      pathsToDelete.some(
+        (path) =>
+          path === this.activeNamespace ||
+          this.activeNamespace.startsWith(`${path}/`)
+      )
+    ) {
+      this.activeNamespace = '';
+      this.selectedNamespace = '';
+      this.activeTagPath = [];
+      this.selectedParent = '';
+    } else {
+      this.activeTagPath = [];
+      this.selectedParent = this.activeNamespace;
+    }
+
+    this.status = `Successfully deleted ${deletedCount} catalogue entr${deletedCount === 1 ? 'y' : 'ies'}.`;
+  } catch (error) {
+    this.status = `Delete failed: ${error.message}`;
+  } finally {
+    this.busy = false;
+  }
+}
+
+
+async renameSelected() {
+  const selectedNamespaces = this.checkedNamespaces || [];
+  const selectedTags = this.checkedTags || [];
+
+  const selectedPaths = [
+    ...selectedNamespaces,
+    ...selectedTags.map((key) => key.slice(key.indexOf(':') + 1)),
+  ];
+
+  const uniquePaths = [...new Set(selectedPaths)];
+
+  if (uniquePaths.length !== 1) {
+    this.status = 'Select exactly one namespace or tag to rename.';
+    return;
+  }
+
+  const targetPath = uniquePaths[0];
+
+  // Avoid accidentally renaming a child when its parent is selected too.
+  this.renameTarget = targetPath;
+
+  try {
+    const catalogue = await this.getConfig();
+    const row = (catalogue.data || []).find(
+      (item) => item.Path === targetPath,
+    );
+
+    if (!row) {
+      this.status = 'Selected item was not found.';
+      return;
+    }
+
+    this.renameName = row.Title || '';
+    this.renameId = row['Tag ID'] || '';
+    this.renameDescription = row.Description || '';
+    this.formMode = 'rename';
+    this.status = `Editing "${row.Title}"`;
+  } catch (error) {
+    this.status = `Could not load item: ${error.message}`;
+  }
+}
+
+async saveRename(event) {
+  event.preventDefault();
+
+  const targetPath = this.renameTarget;
+  const newTitle = this.renameName.trim();
+  const newId = this.renameId.trim().toLowerCase();
+  const newDescription = this.renameDescription.trim();
+
+  if (!targetPath || !newTitle ||
+      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(newId)) {
+    this.status = 'Enter a name and a valid ID using lowercase letters, numbers, and hyphens.';
+    return false;
+  }
+
+  this.busy = true;
+  this.status = 'Renaming item...';
+
+  try {
+    const existing = await this.getConfig();
+    const rows = existing.data || [];
+
+    const target = rows.find((row) => row.Path === targetPath);
+
+    if (!target) {
+      throw new Error('Selected item no longer exists.');
+    }
+
+    const parentPath = targetPath.includes('/')
+      ? targetPath.substring(0, targetPath.lastIndexOf('/'))
+      : '';
+
+    const newPath = parentPath
+      ? `${parentPath}/${newId}`
+      : newId;
+
+    
+if (
+  newPath !== targetPath &&
+  rows.some((row) => {
+    const path = String(row.Path || '').trim();
+
+    return (
+      path === newPath ||
+      path.startsWith(`${newPath}/`)
+    );
+  })
+) {
+  throw new Error(`The path "${newPath}" already exists.`);
+}
+
+
+    const updatedRows = rows.map((row) => {
+  const oldPath = String(row.Path || '').trim();
+
+  if (
+    oldPath !== targetPath &&
+    !oldPath.startsWith(`${targetPath}/`)
+  ) {
+    return row;
+  }
+
+      const updatedPath = oldPath === targetPath
+        ? newPath
+        : `${newPath}${oldPath.slice(targetPath.length)}`;
+
+      if (oldPath === targetPath) {
+        return {
+          ...row,
+          'Tag ID': newId,
+          Title: newTitle,
+          Path: updatedPath,
+          Description: newDescription,
+        };
+      }
+
+      return {
+        ...row,
+        Path: updatedPath,
+      };
+    });
+
+    await this.saveCatalogue({
+      ...existing,
+      total: updatedRows.length,
+      data: updatedRows,
+    });
+
+    await this.loadNamespaces();
+
+    this.checkedNamespaces = [];
+    this.checkedTags = [];
+    this.renameTarget = null;
+    this.formMode = '';
+
+    this.activeNamespace = newPath.split('/')[0];
+    this.selectedNamespace = this.activeNamespace;
+    this.activeTagPath = newPath.split('/').slice(1);
+    this.selectedParent = newPath;
+
+    this.status = `"${newTitle}" renamed successfully.`;
+    return true;
+  } catch (error) {
+    this.status = `Rename failed: ${error.message}`;
+    return false;
+  } finally {
+    this.busy = false;
+  }
+}
 
 async saveCatalogue(updatedCatalogue) {
   const formData = new FormData();
@@ -359,6 +617,29 @@ render() {
           <p>Manage namespaces and nested tags</p>
         </div>
 
+        <div class="header-actions">
+    
+<button
+  class="delete-button"
+  ?disabled=${this.busy ||
+    (this.checkedNamespaces.length === 0 &&
+     this.checkedTags.length === 0)}
+  @click=${() => this.deleteSelected()}
+>
+  Delete
+</button>
+
+
+    <button
+      class="rename-button"
+      ?disabled=${this.busy ||
+        (this.checkedNamespaces.length === 0 &&
+         this.checkedTags.length === 0)}
+      @click=${() => this.renameSelected()}
+    >
+      Rename
+    </button>
+
         <div class="create-menu">
           <button
             class="create-button"
@@ -382,11 +663,18 @@ render() {
                   </button>
                   <button
                     @click=${() => {
-                      this.formMode = 'tag';
-                      this.selectedNamespace = this.activeNamespace || '';
-                      this.selectedParent = tagPath[tagPath.length - 1] || '';
-                      this.showCreateMenu = false;
-                    }}
+  this.formMode = 'tag';
+  this.selectedNamespace = this.activeNamespace || '';
+
+  this.selectedParent = this.activeTagPath.length
+  ? `${this.activeNamespace}/${this.activeTagPath.join('/')}`
+  : this.activeNamespace || '';
+
+  this.tagName = '';
+  this.tagId = '';
+  this.tagDescription = '';
+  this.showCreateMenu = false;
+}}
                   >
                     Create tag
                   </button>
@@ -394,117 +682,170 @@ render() {
               `
             : nothing}
         </div>
+      </div>
       </header>
 
-      ${this.formMode
-        ? html`
-            <section class="create-form">
-              <h2>
-                ${this.formMode === 'namespace'
-                  ? 'Create namespace'
-                  : 'Create tag'}
-              </h2>
+      
 
-              ${this.formMode === 'namespace'
-                ? html`
-                    <form @submit=${async (event) => {
-  if (await this.saveNamespace(event)) {
-    this.formMode = '';
-  }
-}}>
-                      <label>Namespace name</label>
-                      <input
-                        required
-                        .value=${this.namespaceName || ''}
-                        @input=${(event) => {
-                          this.namespaceName = event.target.value;
-                        }}
-                        placeholder="e.g. products"
-                      />
+${this.formMode
+  ? html`
+      <section class="create-form">
+        <h2>
+          ${this.formMode === 'rename'
+            ? 'Rename item'
+            : this.formMode === 'namespace'
+              ? 'Create namespace'
+              : 'Create tag'}
+        </h2>
 
-                      <label>Description</label>
-                      <input
-                        .value=${this.description || ''}
-                        @input=${(event) => {
-                          this.description = event.target.value;
-                        }}
-                        placeholder="Describe this namespace"
-                      />
+        ${this.formMode === 'rename'
+          ? html`
+              <form @submit=${(event) => this.saveRename(event)}>
+                <label>Name</label>
+                <input
+                  required
+                  .value=${this.renameName}
+                  @input=${(e) => {
+                    this.renameName = e.target.value;
+                  }}
+                />
 
-                      <button type="submit" ?disabled=${this.busy}>Save namespace</button>
-                      <button type="button" @click=${() => {
-                        this.formMode = '';
-                      }}>Cancel</button>
-                    </form>
-                  `
-                : html`
-                    <form @submit=${async (event) => {
-  if (await this.createTag(event)) {
-    this.formMode = '';
-  }
-}}>
-                      <label>Namespace</label>
-                      <select
-                        required
-                        .value=${this.selectedNamespace || ''}
-                        @change=${(event) => {
-                          this.selectedNamespace = event.target.value;
-                          this.selectedParent = '';
-                        }}
-                      >
-                        <option value="">Choose namespace</option>
-                        ${namespaceRows.map((row) => html`
-                          <option value=${row.namespace}>
-                            ${row.namespace}
-                          </option>
-                        `)}
-                      </select>
+                <label>ID</label>
+                <input
+                  required
+                  .value=${this.renameId}
+                  @input=${(e) => {
+                    this.renameId = e.target.value;
+                  }}
+                />
 
-                      <label>Parent tag</label>
-                      <select
-                        .value=${this.selectedParent || ''}
-                        @change=${(event) => {
-                          this.selectedParent = event.target.value;
-                        }}
-                      >
-                        <option value="">None — top-level tag</option>
-${this.getAllTags()
-  .filter((row) => row.path.startsWith(`${this.selectedNamespace}/`))
-  .map((row) => html`
-    <option value=${row.path}>
-      ${row.title} (${row.path})
-    </option>
-`)}
-                      </select>
+                <label>Description</label>
+                <input
+                  .value=${this.renameDescription}
+                  @input=${(e) => {
+                    this.renameDescription = e.target.value;
+                  }}
+                />
 
-                      <label>Tag name</label>
-                      <input
-                        required
-                        .value=${this.tagName || ''}
-                        @input=${(event) => {
-                          this.tagName = event.target.value;
-                        }}
-                        placeholder="e.g. running-shoes"
-                      />
+                <button type="submit" ?disabled=${this.busy}>
+                  Save rename
+                </button>
 
-                      <label>Description</label>
-                      <input
-                        .value=${this.tagDescription || ''}
-                        @input=${(event) => {
-                          this.tagDescription = event.target.value;
-                        }}
-                        placeholder="Describe this tag"
-                      />
+                <button
+                  type="button"
+                  @click=${() => {
+                    this.formMode = '';
+                    this.renameTarget = null;
+                  }}
+                >
+                  Cancel
+                </button>
+              </form>
+            `
+          : this.formMode === 'namespace'
+            ? html`
+                <form @submit=${async (event) => {
+                  if (await this.saveNamespace(event)) {
+                    this.formMode = '';
+                  }
+                }}>
+                  <label>Namespace name</label>
+                  <input
+                    required
+                    .value=${this.namespaceName}
+                    @input=${(e) => {
+                      this.namespaceName = e.target.value;
+                    }}
+                    placeholder="e.g. Services"
+                  />
 
-                      <button type="submit" ?disabled=${this.busy}>Save tag</button>
-                      <button type="button" @click=${() => {
-                        this.formMode = '';
-                      }}>Cancel</button>
-                    </form>
-                  `}
-            </section>
-          `
-        : nothing}
+                  <label>Namespace ID</label>
+                  <input
+                    required
+                    .value=${this.namespaceId}
+                    @input=${(e) => {
+                      this.namespaceId = e.target.value;
+                    }}
+                    placeholder="e.g. services"
+                  />
+
+                  <label>Description</label>
+                  <input
+                    .value=${this.description}
+                    @input=${(e) => {
+                      this.description = e.target.value;
+                    }}
+                    placeholder="Describe this namespace"
+                  />
+
+                  <button type="submit" ?disabled=${this.busy}>
+                    Save and close
+                  </button>
+
+                  <button
+                    type="button"
+                    @click=${() => {
+                      this.formMode = '';
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </form>
+              `
+            : html`
+                <form @submit=${async (event) => {
+                  if (await this.createTag(event)) {
+                    this.formMode = '';
+                  }
+                }}>
+                  <label>Tag name</label>
+                  <input
+                    required
+                    .value=${this.tagName}
+                    @input=${(e) => {
+                      this.tagName = e.target.value;
+                    }}
+                    placeholder="e.g. Running Shoes"
+                  />
+
+                  <label>Tag ID</label>
+                  <input
+                    required
+                    .value=${this.tagId}
+                    @input=${(e) => {
+                      this.tagId = e.target.value;
+                    }}
+                    placeholder="e.g. running-shoes"
+                  />
+
+                  <label>Description</label>
+                  <input
+                    .value=${this.tagDescription}
+                    @input=${(e) => {
+                      this.tagDescription = e.target.value;
+                    }}
+                    placeholder="Describe this tag"
+                  />
+
+                  <button type="submit" ?disabled=${this.busy}>
+                    Save and close
+                  </button>
+
+                  <button
+                    type="button"
+                    @click=${() => {
+                      this.formMode = '';
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </form>
+              `}
+      </section>
+    `
+  : nothing}
+
+
 
       <div class="hierarchy">
         <section class="column">
@@ -520,11 +861,24 @@ ${this.getAllTags()
                   row.namespace,
                 )}
                 @change=${(event) => {
-                  const selected = new Set(this.checkedNamespaces || []);
-                  if (event.target.checked) selected.add(row.namespace);
-                  else selected.delete(row.namespace);
-                  this.checkedNamespaces = [...selected];
-                }}
+  const selected = new Set(this.checkedNamespaces || []);
+
+  if (event.target.checked) {
+    selected.add(row.namespace);
+    this.selectNamespace(row.namespace);
+  } else {
+    selected.delete(row.namespace);
+
+    if (this.activeNamespace === row.namespace) {
+      this.activeNamespace = '';
+      this.selectedNamespace = '';
+      this.activeTagPath = [];
+      this.selectedParent = '';
+    }
+  }
+
+  this.checkedNamespaces = [...selected];
+}}
               />
 
               <button
@@ -543,17 +897,14 @@ ${this.getAllTags()
             <h2>${column.title}</h2>
 
             ${column.rows.map((row) => {
-              const parentPath = column.parentPath;
-              const key = this.getTagKey(
-                namespace,
-                parentPath,
-                row.tag,
-              );
+              // const parentPath = column.parentPath;
+              const tagName = this.getTagName(row);
+const key = `${namespace}:${row.path}`;
 
               return html`
                 <div
                   class="tree-row ${
-                    tagPath[depth] === row.tag ? 'active' : ''
+                    tagPath[depth] === tagName ? 'active' : ''
                   }"
                 >
                   <input
@@ -569,7 +920,7 @@ ${this.getAllTags()
 
                   <button
                     class="row-select"
-                    @click=${() => this.selectTag(this.getTagName(row), depth)}
+                    @click=${() => this.selectTag(tagName, depth)}
                   >
                     ${this.getTagName(row)}
 ${this.getTagChildren(row.path).length
