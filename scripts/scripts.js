@@ -199,7 +199,7 @@ async function getThemeUrl() {
   const [, repo, org] = match;
   const config = await fetchPlaceholders('/config');
   if (!config.theme) return null;
-  return `https://da-sc.adobeaem.workers.dev/page/${org}/${repo}${config.theme}`;
+  return `https://da-sc.adobeaem.workers.dev/live/${org}/${repo}${config.theme}`;
 }
 
 async function applyTheme() {
