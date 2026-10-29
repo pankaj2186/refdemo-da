@@ -109,3 +109,90 @@ export function removeTags(rows, paths) {
   if (remaining.length === rows.length) throw new Error('No matching catalogue entries were found.');
   return remaining;
 }
+
+
+/**
+ * Moves a tag and all its descendants under a new parent.
+ * An empty newParent means the root level.
+ */
+export function moveTags(rows, targets, newParent) {
+  const tree = buildTree(rows);
+  const destination = normalizePath(newParent);
+
+  // Remove duplicate selections and children of selected parents.
+  const selected = [...new Set(targets.map(normalizePath))];
+  const sources = selected.filter((path) =>
+    !selected.some(
+      (other) => other !== path && isWithin(path, other),
+    ),
+  );
+
+  if (!sources.length) {
+    throw new Error('Select at least one tag to move.');
+  }
+
+  for (const source of sources) {
+    if (!tree.has(source)) {
+      throw new Error(`"${source}" no longer exists.`);
+    }
+
+    if (destination && !tree.has(destination)) {
+      throw new Error('The destination parent no longer exists.');
+    }
+
+    if (destination && isWithin(destination, source)) {
+      throw new Error('A tag cannot be moved inside itself or its descendants.');
+    }
+  }
+
+  const moves = sources.map((source) => {
+    const id = source.split('/').pop();
+    const path = destination ? `${destination}/${id}` : id;
+
+    return { source, path, tag: tree.get(source) };
+  });
+
+  const movingSources = moves.map((move) => move.source);
+
+  for (const move of moves) {
+    if (
+      move.path !== move.source &&
+      tree.has(move.path) &&
+      !movingSources.some((source) =>
+        isWithin(move.path, source),
+      )
+    ) {
+      throw new Error(`"${move.path}" already exists.`);
+    }
+  }
+
+  const updated = rows.map((row) => {
+    const rowPath = normalizePath(row.Path);
+    const move = moves.find((item) =>
+      isWithin(rowPath, item.source),
+    );
+
+    if (!move) return row;
+
+    return {
+      ...row,
+      Path: `${move.path}${rowPath.slice(move.source.length)}`,
+    };
+  });
+
+  // An implied tag might not have its own catalogue row.
+  for (const move of moves) {
+    if (!rows.some(
+      (row) => normalizePath(row.Path) === move.source,
+    )) {
+      updated.push({
+        'Tag ID': move.tag.id,
+        Title: move.tag.title,
+        Path: move.path,
+        Description: move.tag.description,
+      });
+    }
+  }
+
+  return updated;
+}

@@ -16,9 +16,10 @@ import {
   removeTags,
   toId,
   updateTag,
+  moveTags,
 } from './catalogue.js';
 
-const CATALOGUE_PATH = 'config/tag-catalogue.json';
+const CATALOGUE_PATH = 'config/tags.json';
 const EMPTY_SHEET = {
   total: 0, offset: 0, limit: 0, data: [], ':type': 'sheet',
 };
@@ -27,6 +28,22 @@ const styles = await loadStyle(import.meta.url);
 
 const folderIcon = html`<svg class="icon folder" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h4l2 2h7A1.5 1.5 0 0 1 18 6.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 2 15.5z"/></svg>`;
 const chevronIcon = html`<svg class="icon chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4 13.5 10l-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+const tagIcon = html`
+  <svg
+    viewBox="0 0 24 24"
+    width="18"
+    height="18"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M20.59 13.41 11 3.83V3H4v7l9.59 9.59a2 2 0 0 0 2.82 0l4.18-4.18a2 2 0 0 0 0-2.82Z" />
+    <circle cx="7.5" cy="7.5" r="1" />
+  </svg>
+`;
 
 class TagManagement extends LitElement {
   static properties = {
@@ -42,6 +59,11 @@ class TagManagement extends LitElement {
     busy: { state: true },
     menuOpen: { state: true },
     loading: { state: true },
+    moveTarget: { state: true },
+    pickerPath: { state: true },
+    moveDialogOpen: { state: true },
+    pickerDialogOpen: { state: true },
+    statusType: { state: true },
   };
 
   constructor() {
@@ -55,6 +77,11 @@ class TagManagement extends LitElement {
     this.busy = false;
     this.menuOpen = false;
     this.loading = true;
+    this.moveTarget = '';
+    this.pickerPath = '';
+    this.moveDialogOpen = false;
+    this.pickerDialogOpen = false;
+    this.statusType = 'success';
     this.closeMenuOutside = (e) => {
       const menu = this.shadowRoot.querySelector('.create-menu');
       if (this.menuOpen && !e.composedPath().includes(menu)) this.menuOpen = false;
@@ -94,7 +121,7 @@ class TagManagement extends LitElement {
     const json = JSON.stringify({
       ...sheet, total: data.length, offset: 0, limit: data.length, data,
     }, null, 2);
-    body.append('data', new Blob([json], { type: 'application/json' }), 'tag-catalogue.json');
+    body.append('data', new Blob([json], { type: 'application/json' }), 'tags.json');
     const response = await fetch(this.catalogueUrl, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.token}` },
@@ -107,9 +134,9 @@ class TagManagement extends LitElement {
     try {
       const { data } = await this.fetchSheet();
       this.tree = buildTree(data);
-      this.status = `${this.tree.size} tag(s) loaded.`;
+      this.showStatus(`${this.tree.size} tag(s) loaded.`, 'success');
     } catch (error) {
-      this.status = error.message;
+      this.showStatus(error.message, 'error');
     } finally {
       this.loading = false;
     }
@@ -123,14 +150,15 @@ class TagManagement extends LitElement {
    */
   async mutate(change, progress) {
     this.busy = true;
-    this.status = progress;
+    this.showStatus(progress, 'loading');
     try {
       const sheet = await this.fetchSheet();
       await this.saveSheet(sheet, change(sheet.data));
       await this.load();
+      // this.showStatus('Changes saved successfully.', 'success');
       return true;
     } catch (error) {
-      this.status = error.message;
+      this.showStatus(error.message, 'error');
       return false;
     } finally {
       this.busy = false;
@@ -213,7 +241,7 @@ class TagManagement extends LitElement {
       description: this.form.description.trim(),
     };
     if (!values.title || !ID_PATTERN.test(values.id)) {
-      this.status = 'Enter a title and a name using lowercase letters, numbers and hyphens.';
+      this.showStatus('Enter a title and a name using lowercase letters, numbers and hyphens.', 'error');
       return;
     }
 
@@ -231,7 +259,7 @@ class TagManagement extends LitElement {
     }
     this.checked = [];
     this.form = null;
-    this.status = `"${values.title}" saved.`;
+    this.showStatus(`"${values.title}" saved.`, 'success');
   }
 
   confirmDelete() {
@@ -249,8 +277,103 @@ class TagManagement extends LitElement {
     const removed = paths.find((path) => isWithin(this.activePath, path));
     if (removed !== undefined) this.activePath = parentOf(removed);
     this.checked = [];
-    this.status = `Deleted ${paths.length} item(s) and their descendants.`;
+    this.showStatus(`Deleted ${paths.length} item(s) and their descendants.`, 'success');
   }
+
+  
+openMove() {
+  if (!this.checked.length) {
+    this.showStatus('Select at least one tag to move.', 'error');
+    return;
+  }
+
+  this.moveTarget = '';
+  this.pickerPath = '';
+  this.moveDialogOpen = true;
+
+  this.updateComplete.then(() => {
+    const dialog = this.shadowRoot.querySelector('.move-dialog');
+
+    if (dialog && !dialog.open) {
+      dialog.showModal();
+    }
+  });
+}
+
+openDestinationPicker() {
+  this.pickerPath = this.moveTarget;
+  this.pickerDialogOpen = true;
+
+  this.updateComplete.then(() => {
+    const dialog = this.shadowRoot.querySelector('.destination-picker');
+
+    if (dialog && !dialog.open) {
+      dialog.showModal();
+    }
+  });
+}
+
+confirmDestination() {
+  this.moveTarget = this.pickerPath;
+
+  const dialog = this.shadowRoot.querySelector('.destination-picker');
+
+  if (dialog?.open) {
+    dialog.close();
+  }
+
+  this.pickerDialogOpen = false;
+}
+
+async submitMove(event) {
+  event.preventDefault();
+
+  const targets = [...this.checked];
+  const destination = this.moveTarget;
+
+  const success = await this.mutate(
+    (rows) => moveTags(rows, targets, destination),
+    'Moving tags',
+  );
+
+  if (!success) return;
+
+  const dialog = this.shadowRoot.querySelector('.move-dialog');
+
+if (dialog?.open) {
+  dialog.close();
+}
+
+this.checked = [];
+this.activePath = destination;
+this.moveTarget = '';
+this.moveDialogOpen = false;
+this.pickerDialogOpen = false;
+this.showStatus('Tags moved successfully.', 'success');
+}
+
+// get statusType() {
+//   const message = (this.status || '').toLowerCase();
+
+//   if (/error|failed|unable|invalid/.test(message)) return 'error';
+//   if (/loading|saving|deleting|updating/.test(message)) return 'loading';
+//   if (/saved|success|deleted|created|updated|moved/.test(message)) return 'success';
+
+//   return 'info';
+// }
+
+showStatus(message, type = 'success', duration = 3000) {
+  this.status = message;
+  this.statusType = type;
+
+  clearTimeout(this.statusTimer);
+
+  if (type !== 'loading') {
+    this.statusTimer = setTimeout(() => {
+      this.status = '';
+    }, duration);
+  }
+}
 
   renderHeader() {
     return html`
@@ -286,6 +409,7 @@ class TagManagement extends LitElement {
         <div class="toolbar has-selection">
           <span class="count">${count} selected</span>
           <button class="action" ?disabled=${this.busy || count > 1} @click=${() => this.openCreate('tag')}>Create tag</button>
+          <button class="action" ?disabled=${this.busy || count === 0} @click=${this.openMove}>Move</button>
           <button class="action" ?disabled=${this.busy || count !== 1} @click=${this.openEdit}>Edit</button>
           <button class="action negative" ?disabled=${this.busy} @click=${this.confirmDelete}>Delete</button>
           <span class="spacer"></span>
@@ -307,38 +431,56 @@ class TagManagement extends LitElement {
       </div>`;
   }
 
-  renderColumnBody(tags) {
-    if (tags.length) return html`<ul>${tags.map((tag) => this.renderRow(tag))}</ul>`;
-    if (this.loading) return nothing;
-    return html`<p class="empty">No tags yet. Use Create to add a namespace.</p>`;
-  }
-
-  renderRow(tag) {
-    const checked = this.checked.includes(tag.path);
-    const active = isWithin(this.activePath, tag.path);
+  renderColumnBody(tags, isNamespace = false) {
+  if (tags.length) {
     return html`
-      <li class="row ${active ? 'active' : ''} ${checked ? 'checked' : ''}">
-        <input
-          type="checkbox"
-          aria-label="Select ${tag.title}"
-          .checked=${checked}
-          @change=${(e) => this.toggleChecked(tag.path, e.target.checked)}
-        />
-        <button class="row-open" aria-current=${active ? 'true' : nothing} @click=${() => { this.activePath = tag.path; }}>
-          ${folderIcon}
-          <span class="title">${tag.title}</span>
-          ${this.hasChildren(tag.path) ? chevronIcon : nothing}
-        </button>
-      </li>`;
+      <ul>
+        ${tags.map((tag) => this.renderRow(tag, isNamespace))}
+      </ul>
+    `;
   }
 
+  if (this.loading) return nothing;
+
+  return html`
+    <p class="empty">
+      No tags yet. Use Create to add a namespace.
+    </p>
+  `;
+}
+
+  renderRow(tag, isNamespace = false) {
+  const checked = this.checked.includes(tag.path);
+  const active = isWithin(this.activePath, tag.path);
+
+  return html`
+    <li class="row ${active ? 'active' : ''} ${checked ? 'checked' : ''}">
+      <input
+        type="checkbox"
+        aria-label="Select ${tag.title}"
+        .checked=${checked}
+        @change=${(e) => this.toggleChecked(tag.path, e.target.checked)}
+      />
+
+      <button
+        class="row-open"
+        aria-current=${active ? 'true' : nothing}
+        @click=${() => { this.activePath = tag.path; }}
+      >
+        ${isNamespace ? folderIcon : tagIcon}
+        <span class="title">${tag.title}</span>
+        ${this.hasChildren(tag.path) ? chevronIcon : nothing}
+      </button>
+    </li>
+  `;
+}
   renderDetails() {
     const path = this.checked.length === 1 ? this.checked[0] : this.activePath;
     const tag = this.tree.get(path);
     if (!tag) return nothing;
     return html`
       <aside class="details" aria-label="Tag details">
-        <div class="preview">${folderIcon}</div>
+        <div class="preview">${parentOf(tag.path) === '' ? folderIcon : tagIcon}</div>
         <dl>
           <dt>Title</dt><dd>${tag.title}</dd>
           <dt>Name</dt><dd>${tag.id}</dd>
@@ -354,9 +496,13 @@ class TagManagement extends LitElement {
       ${this.renderToolbar()}
       <div class="browser">
         ${this.columns.map(({ parent, tags }) => html`
-          <section class="column" aria-label=${parent ? `Tags in /${parent}` : 'Namespaces'}>
-            ${this.renderColumnBody(tags)}
-          </section>`)}
+  <section
+    class="column"
+    aria-label=${parent ? `Tags in /${parent}` : 'Namespaces'}
+  >
+    ${this.renderColumnBody(tags, parent === '')}
+  </section>
+`)}
         ${this.renderDetails()}
       </div>
       <dialog @close=${() => { this.pendingDelete = []; }}>
@@ -367,7 +513,9 @@ class TagManagement extends LitElement {
           <sl-button class="primary outline" @click=${() => this.shadowRoot.querySelector('dialog').close()}>Cancel</sl-button>
           <sl-button class="negative" @click=${this.deletePending}>Delete</sl-button>
         </div>
-      </dialog>`;
+      </dialog>
+      ${this.renderMoveDialog()}
+    ${this.renderDestinationPicker()}`;
   }
 
   renderForm() {
@@ -410,10 +558,183 @@ class TagManagement extends LitElement {
       </form>`;
   }
 
+
+renderMoveDialog() {
+  if (!this.moveDialogOpen) return nothing;
+
+  return html`
+    <dialog class="move-dialog" >
+      <form @submit=${this.submitMove}>
+        <header class="move-header">
+          <h2>Move Tag${this.checked.length > 1 ? 's' : ''}</h2>
+
+          <button type="button" @click=${() => {
+  this.shadowRoot.querySelector('.move-dialog')?.close();
+  this.moveDialogOpen = false;
+}}>
+            Cancel
+          </button>
+
+          <button type="submit" ?disabled=${this.busy}>
+            Submit
+          </button>
+        </header>
+
+        <section class="move-form">
+          <h3>Selected tags</h3>
+
+          <ul>
+            ${this.checked.map((path) => html`
+              <li>/${path}</li>
+            `)}
+          </ul>
+
+          <label for="move-target">Move to</label>
+
+          <div class="destination-field">
+            <input
+              id="move-target"
+              .value=${this.moveTarget
+                ? `/${this.moveTarget}`
+                : '/'}
+              readonly
+            />
+
+            <button
+              type="button"
+              aria-label="Browse destination tags"
+              @click=${this.openDestinationPicker}
+            >
+              <span aria-hidden="true">⌕</span>
+            </button>
+          </div>
+        </section>
+      </form>
+    </dialog>
+  `;
+}
+
+get pickerColumns() {
+  const columns = [];
+  let parent = '';
+
+  columns.push({
+    parent,
+    items: childrenOf(this.tree, parent),
+  });
+
+  for (const id of this.pickerPath.split('/').filter(Boolean)) {
+    parent = parent ? `${parent}/${id}` : id;
+
+    columns.push({
+      parent,
+      items: childrenOf(this.tree, parent),
+    });
+  }
+
+  return columns;
+}
+
+renderDestinationPicker() {
+  if (!this.pickerDialogOpen) return nothing;
+
+  const breadcrumbs = this.pickerPath
+    ? this.pickerPath.split('/').map((part, index, parts) => ({
+        label: part,
+        path: parts.slice(0, index + 1).join('/'),
+      }))
+    : [];
+
+  return html`
+    <dialog
+      class="destination-picker"
+    >
+      <header class="picker-header">
+        <button
+          type="button"
+         @click=${() => {
+  const dialog = this.shadowRoot.querySelector('.destination-picker');
+
+  if (dialog?.open) {
+    dialog.close();
+  }
+
+  this.pickerDialogOpen = false;
+}}
+          aria-label="Close destination picker"
+        >
+          ✕
+        </button>
+
+        <h2>Select Parent Path</h2>
+
+        <button
+          type="button"
+          @click=${this.confirmDestination}
+          aria-label="Confirm destination"
+        >
+          ✓
+        </button>
+      </header>
+
+      <nav class="picker-breadcrumbs">
+        <button
+          type="button"
+          @click=${() => { this.pickerPath = ''; }}
+        >
+          Home
+        </button>
+
+        ${breadcrumbs.map((crumb) => html`
+          <span>/</span>
+          <button
+            type="button"
+            @click=${() => { this.pickerPath = crumb.path; }}
+          >
+            ${crumb.label}
+          </button>
+        `)}
+      </nav>
+
+      <div class="picker-columns">
+        ${this.pickerColumns.map((column) => html`
+          <div class="picker-column">
+           ${column.items.map((tag) => {
+  const isNamespace = parentOf(tag.path) === '';
+
+  return html`
+    <button
+      type="button"
+      class=${this.pickerPath === tag.path
+        ? 'picker-row selected'
+        : 'picker-row'}
+      @click=${() => { this.pickerPath = tag.path; }}
+    >
+      ${isNamespace ? folderIcon : tagIcon}
+      <span class="picker-title">${tag.title}</span>
+      ${childrenOf(this.tree, tag.path).length
+        ? html`<span class="picker-chevron">›</span>`
+        : nothing}
+    </button>
+  `;
+})}
+          </div>
+        `)}
+      </div>
+    </dialog>
+  `;
+}
   render() {
     return html`
       ${this.form ? this.renderForm() : this.renderBrowser()}
-      <p class="status" role="status">${this.status}</p>`;
+      
+      ${this.status
+      ? html`
+          <p class="status ${this.statusType}" role="status">
+            ${this.status}
+          </p>
+        `
+      : nothing}`;
   }
 }
 
