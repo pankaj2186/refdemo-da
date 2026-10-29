@@ -30,18 +30,16 @@ const folderIcon = html`<svg class="icon folder" viewBox="0 0 20 20" aria-hidden
 const chevronIcon = html`<svg class="icon chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4 13.5 10l-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
 const tagIcon = html`
   <svg
+    class="tag-icon"
     viewBox="0 0 24 24"
     width="18"
     height="18"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="1.8"
-    stroke-linecap="round"
-    stroke-linejoin="round"
+    fill="#808080"
+    stroke="none"
     aria-hidden="true"
   >
-    <path d="M20.59 13.41 11 3.83V3H4v7l9.59 9.59a2 2 0 0 0 2.82 0l4.18-4.18a2 2 0 0 0 0-2.82Z" />
-    <circle cx="7.5" cy="7.5" r="1" />
+    <path d="M20.59 13.41 13.4 20.6a2 2 0 0 1-2.82 0L3 13V3h10l7.59 7.59a2 2 0 0 1 0 2.82Z" />
+    <circle cx="7.5" cy="7.5" r="1.2" fill="#fff" />
   </svg>
 `;
 
@@ -266,7 +264,7 @@ class TagManagement extends LitElement {
     // a checked descendant of a checked tag goes with its ancestor
     this.pendingDelete = this.checked.filter((path) => !this.checked
       .some((other) => other !== path && isWithin(path, other)));
-    this.updateComplete.then(() => this.shadowRoot.querySelector('dialog').showModal());
+    this.updateComplete.then(() => this.openModal(this.shadowRoot.querySelector('dialog')));
   }
 
   async deletePending() {
@@ -280,100 +278,124 @@ class TagManagement extends LitElement {
     this.showStatus(`Deleted ${paths.length} item(s) and their descendants.`, 'success');
   }
 
-  
-openMove() {
-  if (!this.checked.length) {
-    this.showStatus('Select at least one tag to move.', 'error');
-    return;
+  openMove() {
+    if (!this.checked.length) {
+      this.showStatus('Select at least one tag to move.', 'error');
+      return;
+    }
+
+    this.moveTarget = '';
+    this.pickerPath = '';
+    this.moveDialogOpen = true;
+
+    this.updateComplete.then(() => {
+      const dialog = this.shadowRoot.querySelector('.move-dialog');
+
+      if (dialog && !dialog.open) {
+        this.openModal(dialog);
+      }
+    });
   }
 
-  this.moveTarget = '';
-  this.pickerPath = '';
-  this.moveDialogOpen = true;
+  openDestinationPicker() {
+    this.pickerPath = this.moveTarget;
+    this.pickerDialogOpen = true;
 
-  this.updateComplete.then(() => {
-    const dialog = this.shadowRoot.querySelector('.move-dialog');
+    this.updateComplete.then(() => {
+      const dialog = this.shadowRoot.querySelector('.destination-picker');
 
-    if (dialog && !dialog.open) {
-      dialog.showModal();
-    }
-  });
-}
+      if (dialog && !dialog.open) {
+        this.openModal(dialog);
+      }
+    });
+  }
 
-openDestinationPicker() {
-  this.pickerPath = this.moveTarget;
-  this.pickerDialogOpen = true;
+  confirmDestination() {
+    this.moveTarget = this.pickerPath;
 
-  this.updateComplete.then(() => {
     const dialog = this.shadowRoot.querySelector('.destination-picker');
 
-    if (dialog && !dialog.open) {
-      dialog.showModal();
+    if (dialog?.open) {
+      dialog.close();
     }
-  });
-}
 
-confirmDestination() {
-  this.moveTarget = this.pickerPath;
-
-  const dialog = this.shadowRoot.querySelector('.destination-picker');
-
-  if (dialog?.open) {
-    dialog.close();
+    this.pickerDialogOpen = false;
   }
 
-  this.pickerDialogOpen = false;
-}
+  async submitMove(event) {
+    event.preventDefault();
 
-async submitMove(event) {
-  event.preventDefault();
+    const targets = [...this.checked];
+    const destination = this.moveTarget;
 
-  const targets = [...this.checked];
-  const destination = this.moveTarget;
+    const success = await this.mutate(
+      (rows) => moveTags(rows, targets, destination),
+      'Moving tags',
+    );
 
-  const success = await this.mutate(
-    (rows) => moveTags(rows, targets, destination),
-    'Moving tags',
-  );
+    if (!success) return;
 
-  if (!success) return;
+    const dialog = this.shadowRoot.querySelector('.move-dialog');
 
-  const dialog = this.shadowRoot.querySelector('.move-dialog');
+    if (dialog?.open) {
+      dialog.close();
+    }
 
-if (dialog?.open) {
-  dialog.close();
-}
-
-this.checked = [];
-this.activePath = destination;
-this.moveTarget = '';
-this.moveDialogOpen = false;
-this.pickerDialogOpen = false;
-this.showStatus('Tags moved successfully.', 'success');
-}
-
-// get statusType() {
-//   const message = (this.status || '').toLowerCase();
-
-//   if (/error|failed|unable|invalid/.test(message)) return 'error';
-//   if (/loading|saving|deleting|updating/.test(message)) return 'loading';
-//   if (/saved|success|deleted|created|updated|moved/.test(message)) return 'success';
-
-//   return 'info';
-// }
-
-showStatus(message, type = 'success', duration = 3000) {
-  this.status = message;
-  this.statusType = type;
-
-  clearTimeout(this.statusTimer);
-
-  if (type !== 'loading') {
-    this.statusTimer = setTimeout(() => {
-      this.status = '';
-    }, duration);
+    this.checked = [];
+    this.activePath = destination;
+    this.moveTarget = '';
+    this.moveDialogOpen = false;
+    this.pickerDialogOpen = false;
+    this.showStatus('Tags moved successfully.', 'success');
   }
-}
+
+  // get statusType() {
+  //   const message = (this.status || '').toLowerCase();
+
+  //   if (/error|failed|unable|invalid/.test(message)) return 'error';
+  //   if (/loading|saving|deleting|updating/.test(message)) return 'loading';
+  //   if (/saved|success|deleted|created|updated|moved/.test(message)) return 'success';
+
+  //   return 'info';
+  // }
+
+  /**
+   * Opens a modal dialog and keeps the status message above it. Modal dialogs
+   * sit in the browser's top layer, which no z-index can reach.
+   */
+  openModal(dialog) {
+    dialog.showModal();
+    this.raiseStatus();
+  }
+
+  /**
+   * Shows the status message as a popover, which puts it in the top layer too.
+   * The top layer stacks in the order things are shown, so re-showing it
+   * moves it above any dialog opened since.
+   */
+  raiseStatus() {
+    const status = this.shadowRoot.querySelector('.status');
+    if (!status?.showPopover) return;
+    if (status.matches(':popover-open')) status.hidePopover();
+    status.showPopover();
+  }
+
+  updated(changed) {
+    if (changed.has('status')) this.raiseStatus();
+  }
+
+  showStatus(message, type = 'success', duration = 3000) {
+    this.status = message;
+    this.statusType = type;
+
+    clearTimeout(this.statusTimer);
+
+    if (type !== 'loading') {
+      this.statusTimer = setTimeout(() => {
+        this.status = '';
+      }, duration);
+    }
+  }
 
   renderHeader() {
     return html`
@@ -432,28 +454,28 @@ showStatus(message, type = 'success', duration = 3000) {
   }
 
   renderColumnBody(tags, isNamespace = false) {
-  if (tags.length) {
-    return html`
+    if (tags.length) {
+      return html`
       <ul>
         ${tags.map((tag) => this.renderRow(tag, isNamespace))}
       </ul>
     `;
-  }
+    }
 
-  if (this.loading) return nothing;
+    if (this.loading) return nothing;
 
-  return html`
+    return html`
     <p class="empty">
       No tags yet. Use Create to add a namespace.
     </p>
   `;
-}
+  }
 
   renderRow(tag, isNamespace = false) {
-  const checked = this.checked.includes(tag.path);
-  const active = isWithin(this.activePath, tag.path);
+    const checked = this.checked.includes(tag.path);
+    const active = isWithin(this.activePath, tag.path);
 
-  return html`
+    return html`
     <li class="row ${active ? 'active' : ''} ${checked ? 'checked' : ''}">
       <input
         type="checkbox"
@@ -473,7 +495,8 @@ showStatus(message, type = 'success', duration = 3000) {
       </button>
     </li>
   `;
-}
+  }
+
   renderDetails() {
     const path = this.checked.length === 1 ? this.checked[0] : this.activePath;
     const tag = this.tree.get(path);
@@ -558,20 +581,19 @@ showStatus(message, type = 'success', duration = 3000) {
       </form>`;
   }
 
+  renderMoveDialog() {
+    if (!this.moveDialogOpen) return nothing;
 
-renderMoveDialog() {
-  if (!this.moveDialogOpen) return nothing;
-
-  return html`
+    return html`
     <dialog class="move-dialog" >
       <form @submit=${this.submitMove}>
         <header class="move-header">
           <h2>Move Tag${this.checked.length > 1 ? 's' : ''}</h2>
 
           <button type="button" @click=${() => {
-  this.shadowRoot.querySelector('.move-dialog')?.close();
-  this.moveDialogOpen = false;
-}}>
+    this.shadowRoot.querySelector('.move-dialog')?.close();
+    this.moveDialogOpen = false;
+  }}>
             Cancel
           </button>
 
@@ -595,8 +617,8 @@ renderMoveDialog() {
             <input
               id="move-target"
               .value=${this.moveTarget
-                ? `/${this.moveTarget}`
-                : '/'}
+    ? `/${this.moveTarget}`
+    : '/'}
               readonly
             />
 
@@ -612,40 +634,27 @@ renderMoveDialog() {
       </form>
     </dialog>
   `;
-}
-
-get pickerColumns() {
-  const columns = [];
-  let parent = '';
-
-  columns.push({
-    parent,
-    items: childrenOf(this.tree, parent),
-  });
-
-  for (const id of this.pickerPath.split('/').filter(Boolean)) {
-    parent = parent ? `${parent}/${id}` : id;
-
-    columns.push({
-      parent,
-      items: childrenOf(this.tree, parent),
-    });
   }
 
-  return columns;
-}
+  get pickerColumns() {
+    const parents = [''];
+    this.pickerPath.split('/').filter(Boolean).forEach((id, index) => {
+      parents.push(parents[index] ? `${parents[index]}/${id}` : id);
+    });
+    return parents.map((parent) => ({ parent, items: childrenOf(this.tree, parent) }));
+  }
 
-renderDestinationPicker() {
-  if (!this.pickerDialogOpen) return nothing;
+  renderDestinationPicker() {
+    if (!this.pickerDialogOpen) return nothing;
 
-  const breadcrumbs = this.pickerPath
-    ? this.pickerPath.split('/').map((part, index, parts) => ({
+    const breadcrumbs = this.pickerPath
+      ? this.pickerPath.split('/').map((part, index, parts) => ({
         label: part,
         path: parts.slice(0, index + 1).join('/'),
       }))
-    : [];
+      : [];
 
-  return html`
+    return html`
     <dialog
       class="destination-picker"
     >
@@ -653,14 +662,14 @@ renderDestinationPicker() {
         <button
           type="button"
          @click=${() => {
-  const dialog = this.shadowRoot.querySelector('.destination-picker');
+    const dialog = this.shadowRoot.querySelector('.destination-picker');
 
-  if (dialog?.open) {
-    dialog.close();
-  }
+    if (dialog?.open) {
+      dialog.close();
+    }
 
-  this.pickerDialogOpen = false;
-}}
+    this.pickerDialogOpen = false;
+  }}
           aria-label="Close destination picker"
         >
           ✕
@@ -700,41 +709,42 @@ renderDestinationPicker() {
         ${this.pickerColumns.map((column) => html`
           <div class="picker-column">
            ${column.items.map((tag) => {
-  const isNamespace = parentOf(tag.path) === '';
+    const isNamespace = parentOf(tag.path) === '';
 
-  return html`
+    return html`
     <button
       type="button"
       class=${this.pickerPath === tag.path
-        ? 'picker-row selected'
-        : 'picker-row'}
+    ? 'picker-row selected'
+    : 'picker-row'}
       @click=${() => { this.pickerPath = tag.path; }}
     >
       ${isNamespace ? folderIcon : tagIcon}
       <span class="picker-title">${tag.title}</span>
       ${childrenOf(this.tree, tag.path).length
-        ? html`<span class="picker-chevron">›</span>`
-        : nothing}
+    ? html`<span class="picker-chevron">›</span>`
+    : nothing}
     </button>
   `;
-})}
+  })}
           </div>
         `)}
       </div>
     </dialog>
   `;
-}
+  }
+
   render() {
     return html`
       ${this.form ? this.renderForm() : this.renderBrowser()}
       
       ${this.status
-      ? html`
-          <p class="status ${this.statusType}" role="status">
+    ? html`
+          <p class="status ${this.statusType}" role="status" popover="manual">
             ${this.status}
           </p>
         `
-      : nothing}`;
+    : nothing}`;
   }
 }
 
